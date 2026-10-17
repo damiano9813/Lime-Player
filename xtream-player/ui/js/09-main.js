@@ -74,6 +74,60 @@ document.addEventListener('keydown', (ev) => {
   }
 });
 
+// ------------------------------------------------------------------ aggiornamenti
+// controllo all'avvio sull'ultima release GitHub (latest.json firmato, vedi updater.rs)
+let pendingUpdate = null;
+
+function showUpdate(u) {
+  pendingUpdate = u;
+  const b = $('update-box');
+  b.textContent = `Nuova versione ${u.version} disponibile`;
+  b.title = `Versione installata: ${u.current}`;
+  b.classList.remove('hidden');
+}
+
+async function checkUpdate(manual) {
+  const btn = $('set-update');
+  if (manual) { btn.disabled = true; btn.textContent = 'Controllo…'; }
+  try {
+    const u = await invoke('check_update');
+    if (u) {
+      showUpdate(u);
+      if (manual) offerUpdate(); else toast(`Nuova versione disponibile: ${u.version}`, 'info');
+    } else if (manual) toast('Hai già l\'ultima versione', 'ok');
+  } catch (e) {
+    // all'avvio un controllo fallito (offline, nessuna release) non disturba
+    if (manual) toast('Controllo aggiornamenti non riuscito: ' + errText(e), 'error');
+  } finally {
+    if (manual) { btn.disabled = false; btn.textContent = 'Cerca aggiornamenti'; }
+  }
+}
+
+async function offerUpdate() {
+  const u = pendingUpdate;
+  if (!u) return;
+  const notes = u.notes ? `<pre class="mt-3 max-h-48 overflow-y-auto whitespace-pre-wrap text-xs text-ink-muted bg-s1 border border-line rounded-lg p-3">${escapeHtml(u.notes)}</pre>` : '';
+  const ok = await openModal(`Nuova versione ${u.version}`,
+    `<p>Versione installata: ${escapeHtml(u.current)}. L'aggiornamento ferma lo stream, scarica l'installer e riavvia l'app.</p>${notes}`,
+    [{ label: 'Più tardi', value: false }, { label: 'Aggiorna ora', value: true, primary: true }]);
+  if (!ok) return;
+  destroyPlayer();
+  resetPlayerUi();
+  const b = $('update-box');
+  b.disabled = true;
+  b.textContent = 'Download dell\'aggiornamento…';
+  try {
+    await invoke('install_update');
+  } catch (e) {
+    toast(errText(e), 'error');
+    b.disabled = false;
+    showUpdate(u);
+  }
+}
+
+$('update-box').addEventListener('click', offerUpdate);
+$('set-update').addEventListener('click', () => checkUpdate(true));
+
 // ------------------------------------------------------------------ avvio
 async function init() {
   updateModeButtons();
@@ -95,19 +149,28 @@ async function init() {
   try { S.proxy = await invoke('get_proxy_info'); } catch (e) { toast('Proxy locale non disponibile: ' + errText(e), 'error'); }
   // la rilevazione di ffmpeg/encoder prova davvero la GPU: non blocca il login
   invoke('get_media_capabilities').then((c) => { S.caps = c; renderCaps(); }).catch(() => { renderCaps(); });
+  if (TAURI.app && TAURI.app.getVersion) TAURI.app.getVersion().then((v) => { $('set-version').textContent = `Versione installata: ${v}`; }).catch(() => {});
+  checkUpdate(false);
   // liste salvate su disco riscaricate in background dal backend
   if (TAURI.event) TAURI.event.listen('list-updated', (e) => onListUpdated(e.payload)).catch(() => {});
 
-  let saved = lsGet(CREDS_KEY, null);
-  if (!saved || !saved.server) {
-    try { saved = await invoke('load_credentials'); } catch { saved = null; }
-    if (saved && saved.server) lsSet(CREDS_KEY, saved);
+  // le versioni precedenti tenevano anche la password in localStorage: passa al vault e sparisce
+  const local = lsGet(CREDS_KEY, null);
+  let saved = null;
+  try { saved = await invoke('load_credentials'); } catch { saved = null; }
+  if (local && local.password) {
+    if (!saved) {
+      saved = local;
+      await invoke('save_credentials', { server: local.server, username: local.username, password: local.password }).catch(() => {});
+    }
+    lsSet(CREDS_KEY, XPCore.publicCreds(local));
   }
   if (saved && saved.server && saved.username && saved.password) {
     fillLoginForm(saved);
     await doLogin(saved, true, true);
   } else {
-    $('f-server').focus();
+    fillLoginForm(XPCore.publicCreds(local));
+    $(local && local.username ? 'f-pass' : 'f-server').focus();
   }
 }
 

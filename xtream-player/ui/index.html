@@ -194,6 +194,7 @@
     </div>
     <nav id="cat-list" class="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5 min-h-0" aria-label="Categorie"></nav>
     <div class="p-3 border-t border-line">
+      <button id="update-box" class="hidden btn btn-primary btn-sm w-full mb-2"></button>
       <div id="account-box" class="text-xs text-ink-muted space-y-1 mb-2"></div>
       <div id="caps-box" class="text-[11px] text-ink-subtle mb-2 truncate"></div>
       <button id="logout-btn" class="btn btn-ghost btn-sm w-full">
@@ -484,6 +485,10 @@
         <div class="set-row">
           <div><p class="font-bold text-ink">Cache delle liste</p><p class="set-help">Categorie e liste salvate su questo PC.</p></div>
           <button id="set-clear-cache" class="btn btn-secondary btn-sm">Svuota cache liste</button>
+        </div>
+        <div class="set-row">
+          <div><p class="font-bold text-ink">Aggiornamenti</p><p id="set-version" class="set-help">Versione installata: …</p></div>
+          <button id="set-update" class="btn btn-secondary btn-sm">Cerca aggiornamenti</button>
         </div>
       </section>
     </div>

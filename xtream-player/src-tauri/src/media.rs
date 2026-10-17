@@ -203,6 +203,19 @@ pub fn encoder_args(encoder: &str, quality: Quality) -> Vec<&'static str> {
                 "50", "-bf", "0", "-pix_fmt", "yuv420p",
             ]);
         }
+        // Media Foundation: unico encoder H.264 della build LGPL inclusa nell'installer
+        "h264_mf" => {
+            args.push("h264_mf");
+            let q = match quality {
+                Fast => "50",
+                Balanced => "60",
+                High => "70",
+            };
+            args.extend([
+                "-rate_control", "quality", "-quality", q, "-scenario", "live_streaming", "-g", "50", "-bf",
+                "0", "-pix_fmt", "nv12",
+            ]);
+        }
         _ => {
             let (preset, crf) = match quality {
                 Fast => ("ultrafast", "25"),
@@ -218,6 +231,9 @@ pub fn encoder_args(encoder: &str, quality: Quality) -> Vec<&'static str> {
     }
     args
 }
+
+/// Ordine di prova degli encoder H.264: hardware, poi software.
+pub const DETECT_ORDER: [&str; 5] = ["h264_nvenc", "h264_qsv", "h264_amf", "libx264", "h264_mf"];
 
 pub async fn detect_media_tools() -> MediaTools {
     let ffmpeg = match find_tool("ffmpeg") {
@@ -242,7 +258,8 @@ pub async fn detect_media_tools() -> MediaTools {
         .unwrap_or_default();
     // un encoder hardware elencato non è detto che funzioni: si prova davvero
     let mut encoder = None;
-    for enc in ["h264_nvenc", "h264_qsv", "h264_amf", "libx264"] {
+    // libx264 manca nella build LGPL: lì resta h264_mf (Media Foundation)
+    for enc in DETECT_ORDER {
         let mut args = vec![
             "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i",
             "color=c=black:s=640x360:r=25:d=0.4",
@@ -650,6 +667,10 @@ mod tests {
         assert_eq!(after(&encoder_args("libx264", Quality::Fast), "-crf"), "25");
         assert_eq!(after(&encoder_args("libx264", Quality::Balanced), "-crf"), "22");
         assert_eq!(after(&encoder_args("libx264", Quality::High), "-crf"), "20");
+        assert_eq!(after(&encoder_args("h264_mf", Quality::Fast), "-quality"), "50");
+        assert_eq!(after(&encoder_args("h264_mf", Quality::Balanced), "-quality"), "60");
+        assert_eq!(after(&encoder_args("h264_mf", Quality::High), "-quality"), "70");
+        assert_eq!(after(&encoder_args("h264_mf", Quality::High), "-rate_control"), "quality");
         assert_eq!(Quality::parse("fast"), Quality::Fast);
         assert_eq!(Quality::parse("high"), Quality::High);
         assert_eq!(Quality::parse(""), Quality::Balanced);
@@ -663,7 +684,7 @@ mod tests {
 
     #[test]
     fn every_encoder_has_args() {
-        for enc in ["h264_nvenc", "h264_qsv", "h264_amf", "libx264", "sconosciuto"] {
+        for enc in ["h264_nvenc", "h264_qsv", "h264_amf", "libx264", "h264_mf", "sconosciuto"] {
             for q in [Quality::Fast, Quality::Balanced, Quality::High] {
                 let args = encoder_args(enc, q);
                 assert_eq!(args[0], "-c:v");
@@ -672,6 +693,14 @@ mod tests {
                 assert!(args.contains(&"-g") && args.contains(&"-bf"), "GOP corto e niente B-frame");
             }
         }
+    }
+
+    #[test]
+    fn media_foundation_is_the_last_fallback() {
+        // hardware prima, poi libx264 (build GPL) e infine h264_mf (build LGPL dell'installer)
+        assert_eq!(DETECT_ORDER.last(), Some(&"h264_mf"));
+        let pos = |e: &str| DETECT_ORDER.iter().position(|x| *x == e).unwrap();
+        assert!(pos("h264_nvenc") < pos("libx264") && pos("libx264") < pos("h264_mf"));
     }
 
     #[test]

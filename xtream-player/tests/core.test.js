@@ -16,6 +16,13 @@ test('testo: escape, normalizzazione, iniziali, tempo', () => {
   assert.equal(X.fmtTime(-3), '0:00');
 });
 
+test('credenziali pubbliche: niente password in localStorage', () => {
+  assert.deepEqual(X.publicCreds({ server: 'http://h', username: 'u', password: 'p' }), { server: 'http://h', username: 'u' });
+  assert.equal(X.publicCreds({ server: 'http://h' }), null);
+  assert.equal(X.publicCreds(null), null);
+  assert.equal(JSON.stringify(X.publicCreds({ server: 's', username: 'u', password: 'segreta' })).includes('segreta'), false);
+});
+
 test('highlight ignora accenti e maiuscole e fa l\'escape', () => {
   assert.equal(X.highlight('Città <b>', []), 'Città &lt;b&gt;');
   assert.equal(X.highlight('Città Sport', ['citta']), '<mark class="hl">Città</mark> Sport');

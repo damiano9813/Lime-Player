@@ -2,6 +2,7 @@
 'use strict';
 
 // ------------------------------------------------------------------ login
+// solo server e utente (precompilano il form); la password la custodisce Rust nel vault
 const CREDS_KEY = 'xp.credentials';
 
 let loginSeq = 0;
@@ -36,8 +37,8 @@ async function doLogin(creds, remember, auto) {
     S.creds = normalized;
     S.account = account;
     if (remember) {
-      lsSet(CREDS_KEY, normalized);
-      invoke('save_credentials', normalized).catch(() => {});
+      lsSet(CREDS_KEY, XPCore.publicCreds(normalized));
+      invoke('save_credentials', normalized).catch((e) => toast('Credenziali non salvate: ' + errText(e), 'error'));
     }
     enterApp();
   } catch (e) {
@@ -142,7 +143,7 @@ function renderCaps() {
     el.className = 'text-[11px] text-success mb-2 truncate';
   } else {
     el.textContent = 'Codec extra: ffmpeg non trovato (AC3/DTS/HEVC/MPEG-2 non convertibili)';
-    el.title = 'Installa ffmpeg con: winget install Gyan.FFmpeg, poi riavvia l\'app';
+    el.title = 'ffmpeg è incluso nell\'installer: reinstalla l\'app, oppure installalo con winget install Gyan.FFmpeg e riavvia';
     el.className = 'text-[11px] text-accent-ink mb-2 truncate';
   }
 }

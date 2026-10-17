@@ -5,3 +5,5 @@ xtream-player/src-tauri/binaries/
 # dipendenze frontend
 node_modules/
 xtream-player/ui/vendor/
+# chiavi di firma degli aggiornamenti: solo fuori dal repository
+*.key

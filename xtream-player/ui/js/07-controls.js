@@ -192,7 +192,7 @@ function renderSettings() {
   $('set-ffmpeg').innerHTML = c.ffmpeg
     ? `<span class="text-success font-bold">ffmpeg attivo</span> · encoder video <span class="text-ink font-bold">${escapeHtml(c.h264_encoder || 'software')}</span>
        <span class="block text-ink-subtle font-mono text-[11px] truncate mt-1" title="${escapeHtml(c.ffmpeg)}">${escapeHtml(c.version || c.ffmpeg)}</span>`
-    : '<span class="text-accent-ink font-bold">ffmpeg non trovato</span>: AC3/DTS/HEVC/MPEG-2, cambio traccia audio e sottotitoli non disponibili. Installa con <span class="font-mono">winget install Gyan.FFmpeg</span> e riavvia l\'app.';
+    : '<span class="text-accent-ink font-bold">ffmpeg non trovato</span>: AC3/DTS/HEVC/MPEG-2, cambio traccia audio e sottotitoli non disponibili. ffmpeg è incluso nell\'installer: reinstalla l\'app, oppure installalo con <span class="font-mono">winget install Gyan.FFmpeg</span> e riavvia.';
 }
 function openSettings() {
   closeTracksMenu();

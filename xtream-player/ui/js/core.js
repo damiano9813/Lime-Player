@@ -279,7 +279,12 @@
     return i === -1 ? null : episodes[i + 1] || null;
   }
 
+  // ------------------------------------------------------------------ credenziali
+  // in localStorage solo server e utente: la password sta in Gestione credenziali (Rust)
+  const publicCreds = (c) => (c && c.server && c.username ? { server: String(c.server), username: String(c.username) } : null);
+
   return {
+    publicCreds,
     escapeHtml, normKey, initials, fmtTime, debounce, highlight,
     buildStreamUrl, proxyUrl, transcodeUrl, subtitleUrl, timeshiftStart, timeshiftUrl,
     normLang, langName, codecName, channelsLabel, trackLabel, pickTrack, audioCopyOk, audioTrackRoute, PREFERRED_LANGS,
