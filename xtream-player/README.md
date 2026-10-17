@@ -6,14 +6,44 @@ Player IPTV desktop per Windows compatibile con le API Xtream Codes.
 
 ```
 xtream-player/
-├─ ui/index.html                 UI completa (Tailwind CDN, mpegts.js, hls.js, lista virtualizzata)
+├─ package.json                  script `npm test`
+├─ tests/core.test.js            test della logica pura del frontend (node --test)
+├─ ui/
+│  ├─ index.html                 markup e stili (Tailwind CDN, mpegts.js, hls.js)
+│  └─ js/
+│     ├─ core.js                 logica pura testabile: codec, percorsi, URL, buffer adattivo
+│     ├─ 01-base.js              utilità, toast, modale, scorciatoie, icone
+│     ├─ 02-state.js             costanti e stato condiviso
+│     ├─ 03-login.js             login, logout, account
+│     ├─ 04-library.js           Live/Film, categorie, liste, ricerca, preferiti, recenti
+│     ├─ 05-list.js              lista virtualizzata
+│     ├─ 06-player.js            player, conversione ffmpeg, buffer adattivo
+│     ├─ 07-controls.js          controlli del player e pannello info
+│     └─ 08-main.js              tastiera e avvio
 └─ src-tauri/
-   ├─ Cargo.toml
-   ├─ build.rs                   richiesto da Tauri (tauri_build::build)
-   ├─ tauri.conf.json            richiesto da tauri::generate_context!()
-   ├─ capabilities/default.json  permessi core della finestra
-   ├─ icons/icon.ico             richiesto da tauri-build su Windows
-   └─ src/main.rs                modelli Serde, client reqwest, proxy locale, comandi Tauri
+   ├─ Cargo.toml, build.rs, tauri.conf.json, capabilities/, icons/
+   └─ src/
+      ├─ main.rs                 avvio e registrazione dei comandi
+      ├─ xtream.rs               client Xtream Codes, modelli tolleranti, comandi
+      ├─ state.rs, creds.rs      stato condiviso, credenziali
+      ├─ proxy.rs                proxy locale (CORS, Range, playlist HLS)
+      ├─ media.rs                rilevamento ffmpeg/encoder, ffprobe, argomenti
+      ├─ transcode.rs            percorso di conversione ffmpeg
+      ├─ ts.rs                   PCR MPEG-TS e salto della raffica iniziale
+      ├─ external.rs             player esterni
+      └─ util.rs                 costanti e helper condivisi
+```
+
+I file in `ui/js/` sono script classici caricati in ordine e condividono lo stesso scope
+globale; `core.js` non tocca DOM né Tauri e viene usato anche dai test.
+
+## Test
+
+```powershell
+cd xtream-player\src-tauri
+cargo test
+cd ..
+npm test
 ```
 
 ## Prerequisiti (una volta sola)
