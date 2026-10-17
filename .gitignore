@@ -1,0 +1,6 @@
+# build Rust/Tauri
+xtream-player/src-tauri/target/
+xtream-player/src-tauri/gen/
+xtream-player/src-tauri/binaries/
+# dipendenze frontend
+node_modules/

@@ -1,0 +1,1491 @@
+<!doctype html>
+<html lang="it" class="h-full">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Xtream Player</title>
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.8.0/dist/mpegts.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.15/dist/hls.min.js"></script>
+<style>
+  html, body { background: #09090b; }
+  * { scrollbar-width: thin; scrollbar-color: #3f3f46 transparent; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  input[type=range].xr { -webkit-appearance: none; appearance: none; background: transparent; cursor: pointer; height: 16px; }
+  input[type=range].xr::-webkit-slider-runnable-track { height: 4px; border-radius: 4px; background: linear-gradient(to right, #6366f1 var(--p, 0%), rgba(255,255,255,.25) var(--p, 0%)); }
+  input[type=range].xr::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; margin-top: -5px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 3px rgba(99,102,241,.45); }
+  #player-wrap:fullscreen { max-height: none; width: 100vw; height: 100vh; border-radius: 0; aspect-ratio: auto; }
+  #player-wrap.idle { cursor: none; }
+  #player-wrap.idle #controls { opacity: 0; pointer-events: none; }
+  .row-active { background: rgba(79,70,229,.18); box-shadow: inset 3px 0 0 #6366f1; }
+  .spin { animation: spin 0.9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body class="h-full bg-zinc-950 text-zinc-100 overflow-hidden antialiased">
+
+<!-- ============================ LOGIN ============================ -->
+<div id="login-view" class="h-full flex items-center justify-center p-6">
+  <div class="w-full max-w-md">
+    <div class="flex items-center gap-3 mb-8 justify-center">
+      <div class="w-12 h-12 rounded-2xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-900/40">
+        <svg class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11.04-6.86a1 1 0 0 0 0-1.72L9.5 4.28A1 1 0 0 0 8 5.14z"/></svg>
+      </div>
+      <div>
+        <h1 class="text-2xl font-semibold tracking-tight">Xtream Player</h1>
+        <p class="text-sm text-zinc-400">Player IPTV per account Xtream Codes</p>
+      </div>
+    </div>
+
+    <form id="login-form" class="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 space-y-4 shadow-2xl">
+      <div>
+        <label class="block text-xs font-medium text-zinc-400 mb-1.5" for="f-server">URL server</label>
+        <input id="f-server" type="text" autocomplete="off" spellcheck="false" placeholder="http://provider.example:8080"
+          class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-zinc-400 mb-1.5" for="f-user">Username</label>
+        <input id="f-user" type="text" autocomplete="off" spellcheck="false"
+          class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-zinc-400 mb-1.5" for="f-pass">Password</label>
+        <div class="relative">
+          <input id="f-pass" type="password" autocomplete="off" spellcheck="false"
+            class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 pr-11 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30">
+          <button type="button" id="toggle-pass" class="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800" title="Mostra/nascondi password">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+      </div>
+      <label class="flex items-center gap-2 text-sm text-zinc-300 select-none cursor-pointer">
+        <input id="f-remember" type="checkbox" checked class="w-4 h-4 accent-indigo-600">
+        Ricorda credenziali e accedi automaticamente
+      </label>
+      <div id="login-error" class="hidden text-sm text-red-300 bg-red-950/50 border border-red-900/60 rounded-lg px-3 py-2"></div>
+      <button id="login-btn" type="submit" class="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 disabled:cursor-wait text-white font-medium rounded-lg py-2.5 text-sm transition">
+        <svg id="login-spin" class="hidden w-4 h-4 spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M12 3a9 9 0 1 0 9 9" stroke-linecap="round"/></svg>
+        <span id="login-btn-text">Accedi</span>
+      </button>
+    </form>
+    <p class="text-center text-xs text-zinc-600 mt-6">Le credenziali restano su questo PC (localStorage e cartella di configurazione dell'app).</p>
+  </div>
+</div>
+
+<!-- ============================ APP ============================ -->
+<div id="app-view" class="hidden h-full flex">
+
+  <!-- Sidebar sinistra -->
+  <aside class="w-72 shrink-0 bg-zinc-900 border-r border-zinc-800 flex flex-col min-h-0">
+    <div class="p-4 border-b border-zinc-800 space-y-3">
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center">
+          <svg class="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11.04-6.86a1 1 0 0 0 0-1.72L9.5 4.28A1 1 0 0 0 8 5.14z"/></svg>
+        </div>
+        <span class="font-semibold tracking-tight flex-1">Xtream Player</span>
+        <button id="refresh-btn" class="p-1.5 rounded-md text-zinc-400 hover:text-white hover:bg-zinc-800" title="Ricarica categorie e liste">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+        </button>
+      </div>
+      <div class="grid grid-cols-2 gap-1 p-1 bg-zinc-950 rounded-lg border border-zinc-800">
+        <button data-mode="live" class="mode-btn text-sm font-medium py-1.5 rounded-md transition">Live TV</button>
+        <button data-mode="vod" class="mode-btn text-sm font-medium py-1.5 rounded-md transition">Film VOD</button>
+      </div>
+      <div class="relative">
+        <svg class="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="cat-search" type="text" placeholder="Cerca categoria…" spellcheck="false"
+          class="w-full bg-zinc-950 border border-zinc-800 rounded-lg pl-8 pr-3 py-2 text-sm outline-none focus:border-indigo-500">
+      </div>
+    </div>
+    <div id="cat-list" class="flex-1 overflow-y-auto p-2 space-y-0.5 min-h-0"></div>
+    <div class="p-3 border-t border-zinc-800">
+      <div id="account-box" class="text-xs text-zinc-400 space-y-1 mb-2"></div>
+      <div id="caps-box" class="text-[11px] text-zinc-500 mb-2 truncate"></div>
+      <button id="logout-btn" class="w-full text-xs text-zinc-300 hover:text-white bg-zinc-800 hover:bg-zinc-700 rounded-md py-1.5 transition">Esci e dimentica credenziali</button>
+    </div>
+  </aside>
+
+  <!-- Colonna centrale -->
+  <section class="w-96 shrink-0 border-r border-zinc-800 flex flex-col min-h-0 bg-zinc-950">
+    <div class="p-4 border-b border-zinc-800 space-y-3">
+      <div class="flex items-baseline justify-between gap-2">
+        <h2 id="list-title" class="font-semibold truncate">Canali</h2>
+        <span id="list-count" class="text-xs text-zinc-500 shrink-0"></span>
+      </div>
+      <div class="relative">
+        <svg class="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="stream-search" type="text" placeholder="Cerca (premi / )" spellcheck="false"
+          class="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-8 pr-8 py-2 text-sm outline-none focus:border-indigo-500">
+        <button id="stream-search-clear" class="hidden absolute right-1.5 top-1/2 -translate-y-1/2 p-1 rounded text-zinc-500 hover:text-white" title="Svuota">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+    </div>
+    <div id="list-scroller" class="flex-1 overflow-y-auto relative min-h-0 outline-none" tabindex="0">
+      <div id="list-spacer" class="relative w-full">
+        <div id="list-rows"></div>
+      </div>
+      <div id="list-state" class="hidden absolute inset-0 flex flex-col items-center justify-center gap-3 p-6 text-center text-sm text-zinc-400"></div>
+    </div>
+  </section>
+
+  <!-- Area principale -->
+  <main class="flex-1 min-w-0 flex flex-col min-h-0">
+    <div class="flex-1 min-h-0 overflow-y-auto p-5 space-y-4">
+      <div id="player-wrap" class="relative w-full aspect-video max-h-[72vh] bg-black rounded-xl overflow-hidden border border-zinc-800 select-none">
+        <video id="video" class="w-full h-full bg-black" playsinline preload="auto"></video>
+
+        <div id="player-empty" class="absolute inset-0 flex flex-col items-center justify-center text-zinc-500 gap-3">
+          <svg class="w-14 h-14 text-zinc-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="m10 9 5 3-5 3z" fill="currentColor"/></svg>
+          <p class="text-sm">Seleziona un canale o un film dalla lista</p>
+        </div>
+
+        <div id="player-spinner" class="hidden absolute inset-0 flex items-center justify-center pointer-events-none">
+          <svg class="w-12 h-12 text-indigo-400 spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 3a9 9 0 1 0 9 9" stroke-linecap="round"/></svg>
+        </div>
+
+        <div id="player-error" class="hidden absolute inset-0 bg-black/80 flex flex-col items-center justify-center gap-4 p-6 text-center">
+          <svg class="w-10 h-10 text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v5M12 16h.01"/></svg>
+          <p id="player-error-text" class="text-sm text-zinc-200 max-w-lg"></p>
+          <div class="flex gap-2">
+            <button id="err-retry" class="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sm">Riprova</button>
+            <button id="err-external" class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-sm font-medium">Apri in MPV/VLC</button>
+          </div>
+        </div>
+
+        <div id="controls" class="absolute inset-x-0 bottom-0 px-4 pb-3 pt-10 bg-gradient-to-t from-black/90 via-black/50 to-transparent transition-opacity duration-300">
+          <div id="seek-row" class="hidden mb-2">
+            <input id="seek" type="range" min="0" max="1000" value="0" step="1" class="xr w-full">
+          </div>
+          <div class="flex items-center gap-2 text-white">
+            <button id="btn-play" class="p-2 rounded-md hover:bg-white/10" title="Play/Pausa (Spazio)"></button>
+            <button id="btn-stop" class="p-2 rounded-md hover:bg-white/10" title="Stop">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>
+            </button>
+            <button id="btn-mute" class="p-2 rounded-md hover:bg-white/10" title="Muto (M)"></button>
+            <input id="volume" type="range" min="0" max="100" value="100" class="xr w-24">
+            <span id="time" class="text-xs tabular-nums text-zinc-300 ml-2 whitespace-nowrap"></span>
+            <span id="live-badge" class="hidden ml-2 text-[10px] font-bold tracking-wider bg-red-600 rounded px-1.5 py-0.5">LIVE</span>
+            <div class="flex-1"></div>
+            <select id="lat-select" title="Buffer dei canali live" class="bg-black/50 border border-white/20 rounded-md text-xs px-2 py-1 outline-none">
+              <option value="min">Latenza minima</option>
+              <option value="bal">Bilanciata</option>
+              <option value="stable">Stabile</option>
+            </select>
+            <select id="fmt-select" title="Modalità stream live" class="bg-black/50 border border-white/20 rounded-md text-xs px-2 py-1 outline-none">
+              <option value="ts">Auto (MPEG-TS)</option>
+              <option value="m3u8">HLS</option>
+              <option value="ffmpeg">Forza ffmpeg</option>
+            </select>
+            <button id="btn-reload" class="p-2 rounded-md hover:bg-white/10" title="Ricarica stream">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+            </button>
+            <button id="btn-pip" class="p-2 rounded-md hover:bg-white/10" title="Picture in Picture">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><rect x="12" y="12" width="7" height="5" rx="1" fill="currentColor"/></svg>
+            </button>
+            <button id="btn-fs" class="p-2 rounded-md hover:bg-white/10" title="Schermo intero (F)">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Info canale -->
+      <div id="info-panel" class="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex gap-4 items-start">
+        <div id="info-logo" class="w-20 h-20 shrink-0 rounded-lg bg-zinc-800 flex items-center justify-center overflow-hidden text-zinc-500 text-xl font-semibold"></div>
+        <div class="flex-1 min-w-0 space-y-1.5">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span id="info-type" class="hidden text-[10px] font-bold tracking-wider rounded px-1.5 py-0.5"></span>
+            <h3 id="info-name" class="text-lg font-semibold truncate select-text">Nessun contenuto in riproduzione</h3>
+          </div>
+          <p id="info-cat" class="text-sm text-zinc-400 truncate"></p>
+          <p id="info-tech" class="text-xs text-zinc-500 select-text"></p>
+          <p id="info-status" class="text-xs text-zinc-400"></p>
+          <p id="info-latency" class="text-xs text-zinc-500 tabular-nums"></p>
+          <div id="info-hint" class="hidden text-xs text-amber-300 bg-amber-950/40 border border-amber-900/50 rounded-md px-2 py-1.5"></div>
+        </div>
+        <div class="flex flex-col gap-2 shrink-0">
+          <button id="btn-external" disabled class="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-sm font-medium transition">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 3h7v7M21 3l-9 9M19 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5"/></svg>
+            Apri in MPV/VLC esterno
+          </button>
+          <button id="btn-copy" disabled class="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed text-sm transition">Copia URL stream</button>
+          <button id="btn-fav" disabled class="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed text-sm transition">☆ Aggiungi ai preferiti</button>
+        </div>
+      </div>
+      <p class="text-xs text-zinc-600">Scorciatoie: Spazio play/pausa · F schermo intero · M muto · ↑/↓ canale precedente/successivo · ←/→ ±10 s (VOD) · / cerca</p>
+    </div>
+  </main>
+</div>
+
+<div id="toast" class="hidden fixed bottom-5 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-lg text-sm shadow-2xl border"></div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ------------------------------------------------------------------ utils
+  const $ = (id) => document.getElementById(id);
+  const TAURI = window.__TAURI__;
+  const invoke = (cmd, args) => {
+    if (!TAURI || !TAURI.core) return Promise.reject('API Tauri non disponibile: avvia l\'app con "cargo tauri dev".');
+    return TAURI.core.invoke(cmd, args || {});
+  };
+  const errText = (e) => (typeof e === 'string' ? e : (e && e.message) ? e.message : JSON.stringify(e));
+  const escapeHtml = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const normKey = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const initials = (name) => {
+    const w = String(name || '').replace(/[^\p{L}\p{N} ]/gu, ' ').trim().split(/\s+/).filter(Boolean);
+    return ((w[0] || '?')[0] + (w[1] ? w[1][0] : '')).toUpperCase();
+  };
+  const fmtTime = (sec) => {
+    if (!isFinite(sec) || sec < 0) sec = 0;
+    const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = Math.floor(sec % 60);
+    const mm = String(m).padStart(h ? 2 : 1, '0'), ss = String(s).padStart(2, '0');
+    return h ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+  };
+  const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+  const lsGet = (k, def) => { try { const v = localStorage.getItem(k); return v == null ? def : JSON.parse(v); } catch { return def; } };
+  const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage pieno o disabilitato */ } };
+  const lsDel = (k) => { try { localStorage.removeItem(k); } catch { /* ignorato */ } };
+
+  let toastTimer = null;
+  function toast(msg, kind) {
+    const el = $('toast');
+    el.textContent = msg;
+    el.className = 'fixed bottom-5 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-lg text-sm shadow-2xl border ' +
+      (kind === 'error' ? 'bg-red-950 border-red-800 text-red-100' : kind === 'ok' ? 'bg-emerald-950 border-emerald-800 text-emerald-100' : 'bg-zinc-800 border-zinc-700 text-zinc-100');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.add('hidden'), 4000);
+  }
+
+  const ICONS = {
+    play: '<svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11.04-6.86a1 1 0 0 0 0-1.72L9.5 4.28A1 1 0 0 0 8 5.14z"/></svg>',
+    pause: '<svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>',
+    vol: '<svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 5 6 9H2v6h4l5 4z" fill="currentColor"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg>',
+    mute: '<svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 5 6 9H2v6h4l5 4z" fill="currentColor"/><path d="m22 9-6 6M16 9l6 6"/></svg>',
+    star: '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="m12 2 3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.8 21l1.2-6.8-5-4.9 6.9-1z"/></svg>',
+    starO: '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="m12 2 3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.8 21l1.2-6.8-5-4.9 6.9-1z"/></svg>',
+  };
+
+  // ------------------------------------------------------------------ stato
+  const ALL = '__all__', FAV = '__fav__';
+  const MODE_API = {
+    live: { cats: 'get_live_categories', streams: 'get_live_streams', label: 'Live TV', allLabel: 'Tutti i canali', unit: 'canali' },
+    vod: { cats: 'get_vod_categories', streams: 'get_vod_streams', label: 'Film VOD', allLabel: 'Tutti i film', unit: 'film' },
+  };
+  const S = {
+    creds: null,
+    account: null,
+    proxy: null,
+    mode: lsGet('xp.mode', 'live') === 'vod' ? 'vod' : 'live',
+    categories: { live: null, vod: null },
+    catNames: { live: new Map(), vod: new Map() },
+    selectedCat: { live: lsGet('xp.cat.live', ALL), vod: lsGet('xp.cat.vod', ALL) },
+    cache: new Map(),
+    list: [],
+    filtered: [],
+    catFilter: '',
+    search: '',
+    current: null,
+    currentMode: null,
+    currentUrl: '',
+    favorites: { live: lsGet('xp.fav.live', []), vod: lsGet('xp.fav.vod', []) },
+    liveFormat: ['ts', 'm3u8', 'ffmpeg'].includes(lsGet('xp.liveFormat', 'ts')) ? lsGet('xp.liveFormat', 'ts') : 'ts',
+    loadSeq: 0,
+  };
+
+  // ------------------------------------------------------------------ login
+  const CREDS_KEY = 'xp.credentials';
+
+  function setLoginBusy(busy, text) {
+    $('login-btn').disabled = busy;
+    $('login-spin').classList.toggle('hidden', !busy);
+    $('login-btn-text').textContent = busy ? (text || 'Connessione…') : 'Accedi';
+    ['f-server', 'f-user', 'f-pass'].forEach((id) => { $(id).disabled = busy; });
+  }
+  function showLoginError(msg) {
+    const el = $('login-error');
+    el.textContent = msg || '';
+    el.classList.toggle('hidden', !msg);
+  }
+  function fillLoginForm(c) {
+    if (!c) return;
+    $('f-server').value = c.server || '';
+    $('f-user').value = c.username || '';
+    $('f-pass').value = c.password || '';
+  }
+
+  async function doLogin(creds, remember) {
+    showLoginError('');
+    setLoginBusy(true, 'Connessione al server…');
+    try {
+      const account = await invoke('xtream_login', { server: creds.server, username: creds.username, password: creds.password });
+      const normalized = { server: account.normalized_server, username: creds.username.trim(), password: creds.password };
+      S.creds = normalized;
+      S.account = account;
+      if (remember) {
+        lsSet(CREDS_KEY, normalized);
+        invoke('save_credentials', normalized).catch(() => {});
+      }
+      enterApp();
+    } catch (e) {
+      showLoginError(errText(e));
+      fillLoginForm(creds);
+    } finally {
+      setLoginBusy(false);
+    }
+  }
+
+  $('login-form').addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const creds = { server: $('f-server').value.trim(), username: $('f-user').value.trim(), password: $('f-pass').value };
+    if (!creds.server || !creds.username || !creds.password) { showLoginError('Compila URL server, username e password.'); return; }
+    doLogin(creds, $('f-remember').checked);
+  });
+  $('toggle-pass').addEventListener('click', () => {
+    const p = $('f-pass');
+    p.type = p.type === 'password' ? 'text' : 'password';
+  });
+
+  async function logout() {
+    destroyPlayer();
+    resetPlayerUi();
+    lsDel(CREDS_KEY);
+    await invoke('clear_credentials').catch(() => {});
+    S.creds = null; S.account = null; S.cache.clear();
+    S.categories = { live: null, vod: null };
+    S.catNames = { live: new Map(), vod: new Map() };
+    S.list = []; S.filtered = [];
+    $('f-pass').value = '';
+    $('app-view').classList.add('hidden');
+    $('login-view').classList.remove('hidden');
+  }
+  $('logout-btn').addEventListener('click', logout);
+
+  function enterApp() {
+    $('login-view').classList.add('hidden');
+    $('app-view').classList.remove('hidden');
+    renderAccount();
+    renderCaps();
+    $('fmt-select').value = S.liveFormat;
+    $('lat-select').value = L.mode;
+    switchMode(S.mode, true);
+  }
+
+  function renderAccount() {
+    const a = S.account;
+    if (!a) { $('account-box').innerHTML = ''; return; }
+    let exp = 'Illimitata';
+    const ts = parseInt(a.exp_date, 10);
+    if (ts > 0) exp = new Date(ts * 1000).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' });
+    const status = a.status || 'Sconosciuto';
+    const ok = /active/i.test(status);
+    $('account-box').innerHTML = `
+      <div class="flex items-center justify-between"><span class="text-zinc-200 font-medium truncate">${escapeHtml(a.username)}</span>
+        <span class="text-[10px] px-1.5 py-0.5 rounded ${ok ? 'bg-emerald-900/60 text-emerald-300' : 'bg-amber-900/60 text-amber-300'}">${escapeHtml(status)}</span></div>
+      <div class="flex justify-between"><span>Scadenza</span><span class="text-zinc-300">${escapeHtml(exp)}</span></div>
+      <div class="flex justify-between"><span>Connessioni</span><span class="text-zinc-300">${escapeHtml(a.active_cons || '0')} / ${escapeHtml(a.max_connections || '?')}</span></div>
+      <div class="truncate text-zinc-500" title="${escapeHtml(a.normalized_server)}">${escapeHtml(a.normalized_server)}</div>`;
+    if (!ok) toast(`Stato account: ${status}`, 'error');
+  }
+
+  function renderCaps() {
+    const c = S.caps || {};
+    const el = $('caps-box');
+    if (c.ffmpeg) {
+      el.textContent = `Codec extra: ffmpeg attivo · video ${c.h264_encoder || 'software'}`;
+      el.title = `${c.version || 'ffmpeg'}\n${c.ffmpeg}`;
+      el.className = 'text-[11px] text-emerald-400/80 mb-2 truncate';
+    } else {
+      el.textContent = 'Codec extra: ffmpeg non trovato (AC3/DTS/HEVC/MPEG-2 non convertibili)';
+      el.title = 'Installa ffmpeg con: winget install Gyan.FFmpeg, poi riavvia l\'app';
+      el.className = 'text-[11px] text-amber-400/80 mb-2 truncate';
+    }
+  }
+
+  // ------------------------------------------------------------------ modalità / categorie
+  function updateModeButtons() {
+    document.querySelectorAll('.mode-btn').forEach((b) => {
+      const active = b.dataset.mode === S.mode;
+      b.className = 'mode-btn text-sm font-medium py-1.5 rounded-md transition ' +
+        (active ? 'bg-indigo-600 text-white shadow' : 'text-zinc-400 hover:text-white hover:bg-zinc-800');
+    });
+  }
+  document.querySelectorAll('.mode-btn').forEach((b) => b.addEventListener('click', () => switchMode(b.dataset.mode)));
+
+  async function switchMode(mode, force) {
+    if (mode !== 'live' && mode !== 'vod') return;
+    if (mode === S.mode && !force) return;
+    S.mode = mode;
+    lsSet('xp.mode', mode);
+    updateModeButtons();
+    $('cat-search').value = '';
+    S.catFilter = '';
+    $('stream-search').value = '';
+    S.search = '';
+    $('stream-search-clear').classList.add('hidden');
+    await loadCategories(false);
+    selectCategory(S.selectedCat[mode] || ALL);
+  }
+
+  async function loadCategories(forceReload) {
+    const mode = S.mode;
+    if (S.categories[mode] && !forceReload) { renderCategories(); return; }
+    $('cat-list').innerHTML = '<div class="flex items-center gap-2 text-sm text-zinc-500 p-3"><svg class="w-4 h-4 spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M12 3a9 9 0 1 0 9 9" stroke-linecap="round"/></svg>Caricamento categorie…</div>';
+    try {
+      const cats = await invoke('get_categories', { ...S.creds, mode: MODE_API[mode].cats });
+      S.categories[mode] = cats;
+      const map = new Map();
+      cats.forEach((c) => map.set(c.category_id, c.category_name));
+      S.catNames[mode] = map;
+    } catch (e) {
+      S.categories[mode] = [];
+      toast('Errore categorie: ' + errText(e), 'error');
+    }
+    if (S.mode === mode) renderCategories();
+  }
+
+  function renderCategories() {
+    const mode = S.mode;
+    const cats = S.categories[mode] || [];
+    const q = normKey(S.catFilter);
+    const sel = S.selectedCat[mode];
+    const item = (id, name, extra) => {
+      const active = id === sel;
+      return `<button data-cat="${escapeHtml(id)}" class="w-full text-left px-3 py-2 rounded-md text-sm truncate transition flex items-center gap-2 ${active ? 'bg-indigo-600/20 text-indigo-200 font-medium' : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'}">${extra || ''}<span class="truncate">${escapeHtml(name)}</span></button>`;
+    };
+    let html = '';
+    if (!q) {
+      html += item(ALL, MODE_API[mode].allLabel, '<span class="text-zinc-500">▤</span>');
+      html += item(FAV, `Preferiti (${S.favorites[mode].length})`, '<span class="text-amber-400">★</span>');
+      html += '<div class="h-px bg-zinc-800 my-2"></div>';
+    }
+    const visible = q ? cats.filter((c) => normKey(c.category_name).includes(q)) : cats;
+    html += visible.map((c) => item(c.category_id, c.category_name)).join('');
+    if (!visible.length && q) html += '<p class="text-xs text-zinc-500 p-3">Nessuna categoria trovata.</p>';
+    if (!cats.length && !q) html += '<p class="text-xs text-zinc-500 p-3">Nessuna categoria disponibile.</p>';
+    $('cat-list').innerHTML = html;
+  }
+
+  $('cat-list').addEventListener('click', (ev) => {
+    const b = ev.target.closest('[data-cat]');
+    if (b) selectCategory(b.dataset.cat);
+  });
+  $('cat-search').addEventListener('input', debounce((ev) => { S.catFilter = ev.target.value; renderCategories(); }, 80));
+
+  function categoryLabel(mode, id) {
+    if (id === ALL) return MODE_API[mode].allLabel;
+    if (id === FAV) return 'Preferiti';
+    return S.catNames[mode].get(id) || `Categoria ${id}`;
+  }
+
+  async function selectCategory(catId) {
+    const mode = S.mode;
+    if (catId !== ALL && catId !== FAV && S.categories[mode] && S.categories[mode].length && !S.catNames[mode].has(catId)) catId = ALL;
+    S.selectedCat[mode] = catId;
+    lsSet('xp.cat.' + mode, catId);
+    renderCategories();
+    $('list-title').textContent = categoryLabel(mode, catId);
+    await loadStreams(mode, catId, false);
+  }
+
+  // ------------------------------------------------------------------ stream
+  function prepareItems(items) {
+    for (const it of items) it._k = normKey(it.name);
+    return items;
+  }
+
+  async function loadStreams(mode, catId, forceReload) {
+    const seq = ++S.loadSeq;
+    let items;
+    if (catId === FAV) {
+      items = prepareItems(S.favorites[mode].slice());
+    } else {
+      const key = mode + '|' + catId;
+      const allKey = mode + '|' + ALL;
+      if (!forceReload && S.cache.has(key)) {
+        items = S.cache.get(key);
+      } else if (!forceReload && catId !== ALL && S.cache.has(allKey)) {
+        items = S.cache.get(allKey).filter((s) => s.category_id === catId);
+        S.cache.set(key, items);
+      } else {
+        S.list = []; S.filtered = [];
+        renderList(true);
+        showListState('loading');
+        try {
+          const res = await invoke('get_streams', { ...S.creds, mode: MODE_API[mode].streams, categoryId: catId === ALL ? '' : catId });
+          items = prepareItems(res);
+          S.cache.set(key, items);
+        } catch (e) {
+          if (seq !== S.loadSeq) return;
+          showListState('error', errText(e));
+          return;
+        }
+      }
+    }
+    if (seq !== S.loadSeq) return;
+    S.list = items;
+    applyFilter(true);
+  }
+
+  function applyFilter(resetScroll) {
+    const terms = normKey(S.search).split(/\s+/).filter(Boolean);
+    S.filtered = terms.length ? S.list.filter((it) => terms.every((t) => it._k.includes(t))) : S.list;
+    const unit = MODE_API[S.mode].unit;
+    $('list-count').textContent = terms.length ? `${S.filtered.length.toLocaleString('it-IT')} / ${S.list.length.toLocaleString('it-IT')} ${unit}` : `${S.list.length.toLocaleString('it-IT')} ${unit}`;
+    if (resetScroll) $('list-scroller').scrollTop = 0;
+    if (!S.filtered.length) {
+      showListState('empty', terms.length ? 'Nessun risultato per la ricerca.' : (S.selectedCat[S.mode] === FAV ? 'Nessun preferito: usa la stella accanto a un canale.' : 'Nessun elemento in questa categoria.'));
+    } else {
+      showListState(null);
+    }
+    renderList(true);
+  }
+
+  function showListState(kind, msg) {
+    const el = $('list-state');
+    if (!kind) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+    el.classList.remove('hidden');
+    if (kind === 'loading') {
+      el.innerHTML = '<svg class="w-8 h-8 text-indigo-400 spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 3a9 9 0 1 0 9 9" stroke-linecap="round"/></svg><span>Caricamento lista… (con molti elementi può richiedere qualche secondo)</span>';
+    } else if (kind === 'error') {
+      el.innerHTML = `<span class="text-red-300">${escapeHtml(msg)}</span><button id="list-retry" class="px-3 py-1.5 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-200">Riprova</button>`;
+      $('list-retry').addEventListener('click', () => loadStreams(S.mode, S.selectedCat[S.mode], true));
+    } else {
+      el.innerHTML = `<span>${escapeHtml(msg)}</span>`;
+    }
+  }
+
+  const onSearch = debounce(() => { applyFilter(true); }, 70);
+  $('stream-search').addEventListener('input', (ev) => {
+    S.search = ev.target.value;
+    $('stream-search-clear').classList.toggle('hidden', !S.search);
+    onSearch();
+  });
+  $('stream-search-clear').addEventListener('click', () => {
+    $('stream-search').value = ''; S.search = '';
+    $('stream-search-clear').classList.add('hidden');
+    applyFilter(true);
+    $('stream-search').focus();
+  });
+
+  $('refresh-btn').addEventListener('click', async () => {
+    const mode = S.mode;
+    for (const k of Array.from(S.cache.keys())) if (k.startsWith(mode + '|')) S.cache.delete(k);
+    await loadCategories(true);
+    await loadStreams(mode, S.selectedCat[mode], true);
+    toast('Liste aggiornate', 'ok');
+  });
+
+  // ------------------------------------------------------------------ preferiti
+  function favIndex(mode, id) { return S.favorites[mode].findIndex((f) => f.stream_id === id); }
+  function isFav(mode, id) { return favIndex(mode, id) !== -1; }
+  function toggleFav(mode, item) {
+    const i = favIndex(mode, item.stream_id);
+    if (i === -1) {
+      S.favorites[mode].push({
+        stream_id: item.stream_id, name: item.name, stream_icon: item.stream_icon, category_id: item.category_id,
+        container_extension: item.container_extension, num: item.num, epg_channel_id: item.epg_channel_id, rating: item.rating,
+      });
+    } else {
+      S.favorites[mode].splice(i, 1);
+    }
+    lsSet('xp.fav.' + mode, S.favorites[mode]);
+    if (S.mode === mode) {
+      renderCategories();
+      if (S.selectedCat[mode] === FAV) { S.list = prepareItems(S.favorites[mode].slice()); applyFilter(false); } else renderList(true);
+    }
+    updateFavButton();
+  }
+
+  // ------------------------------------------------------------------ lista virtualizzata
+  const ROW_H = 60, MAX_ROWS = 100, OVERSCAN = 8;
+  const V = { start: -1, end: -1 };
+  const scroller = $('list-scroller'), spacer = $('list-spacer'), rowsLayer = $('list-rows');
+
+  function rowHtml(it, idx) {
+    const active = S.current && S.currentMode === S.mode && S.current.stream_id === it.stream_id;
+    const fav = isFav(S.mode, it.stream_id);
+    const icon = it.stream_icon && /^https?:\/\//i.test(it.stream_icon)
+      ? `<img src="${escapeHtml(it.stream_icon)}" loading="lazy" decoding="async" referrerpolicy="no-referrer" class="w-full h-full object-contain" alt=""><span class="hidden">${escapeHtml(initials(it.name))}</span>`
+      : `<span>${escapeHtml(initials(it.name))}</span>`;
+    const sub = S.mode === 'vod'
+      ? [it.container_extension ? it.container_extension.toUpperCase() : '', it.rating > 0 ? '★ ' + Number(it.rating).toFixed(1) : ''].filter(Boolean).join(' · ')
+      : (S.selectedCat[S.mode] === ALL || S.selectedCat[S.mode] === FAV ? (S.catNames[S.mode].get(it.category_id) || '') : '');
+    return `<div data-idx="${idx}" class="vrow absolute left-0 right-0 flex items-center gap-3 px-3 cursor-pointer hover:bg-zinc-900 ${active ? 'row-active' : ''}" style="top:${idx * ROW_H}px;height:${ROW_H}px">
+      <span class="w-9 text-right text-[11px] tabular-nums text-zinc-600 shrink-0">${escapeHtml(it.num || idx + 1)}</span>
+      <div class="w-10 h-10 rounded-md bg-zinc-800/80 shrink-0 overflow-hidden flex items-center justify-center text-[11px] font-semibold text-zinc-400">${icon}</div>
+      <div class="flex-1 min-w-0">
+        <div class="text-sm truncate ${active ? 'text-indigo-200 font-medium' : 'text-zinc-200'}">${escapeHtml(it.name)}</div>
+        ${sub ? `<div class="text-[11px] text-zinc-500 truncate">${escapeHtml(sub)}</div>` : ''}
+      </div>
+      <button data-fav="${idx}" class="p-1.5 rounded-md shrink-0 ${fav ? 'text-amber-400' : 'text-zinc-600 hover:text-zinc-300'}" title="Preferito">${fav ? ICONS.star : ICONS.starO}</button>
+    </div>`;
+  }
+
+  function renderList(force) {
+    const total = S.filtered.length;
+    spacer.style.height = total * ROW_H + 'px';
+    const viewH = scroller.clientHeight || 600;
+    const first = Math.floor(scroller.scrollTop / ROW_H);
+    const start = Math.max(0, first - OVERSCAN);
+    const count = Math.min(MAX_ROWS, Math.ceil(viewH / ROW_H) + OVERSCAN * 2);
+    const end = Math.min(total, start + count);
+    if (!force && start === V.start && end === V.end) return;
+    V.start = start; V.end = end;
+    let html = '';
+    for (let i = start; i < end; i++) html += rowHtml(S.filtered[i], i);
+    rowsLayer.innerHTML = html;
+  }
+
+  // Chromium emette al massimo un evento scroll per frame: il render è già limitato.
+  scroller.addEventListener('scroll', () => renderList(false), { passive: true });
+  window.addEventListener('resize', debounce(() => renderList(true), 100));
+  rowsLayer.addEventListener('error', (ev) => {
+    const t = ev.target;
+    if (t && t.tagName === 'IMG' && t.parentElement) {
+      const span = t.parentElement.querySelector('span.hidden');
+      if (span) span.classList.remove('hidden');
+      t.remove();
+    }
+  }, true);
+  rowsLayer.addEventListener('click', (ev) => {
+    const favBtn = ev.target.closest('[data-fav]');
+    if (favBtn) { ev.stopPropagation(); const it = S.filtered[+favBtn.dataset.fav]; if (it) toggleFav(S.mode, it); return; }
+    const row = ev.target.closest('[data-idx]');
+    if (row) { const it = S.filtered[+row.dataset.idx]; if (it) playItem(it, S.mode); }
+  });
+
+  function scrollToIndex(idx) {
+    const top = idx * ROW_H, bottom = top + ROW_H;
+    if (top < scroller.scrollTop) scroller.scrollTop = top;
+    else if (bottom > scroller.scrollTop + scroller.clientHeight) scroller.scrollTop = bottom - scroller.clientHeight;
+  }
+
+  function stepChannel(delta) {
+    if (!S.filtered.length) return;
+    let idx = S.current && S.currentMode === S.mode ? S.filtered.findIndex((s) => s.stream_id === S.current.stream_id) : -1;
+    idx = idx === -1 ? (delta > 0 ? 0 : S.filtered.length - 1) : Math.min(S.filtered.length - 1, Math.max(0, idx + delta));
+    scrollToIndex(idx);
+    playItem(S.filtered[idx], S.mode);
+  }
+
+  // ------------------------------------------------------------------ player
+  const video = $('video');
+  const P = {
+    mpegts: null, hls: null, retries: 0, retryTimer: null, watchdog: null, healthTimer: null, startTimer: null,
+    lastTime: 0, stallTicks: 0, fmt: 'ts', mediaInfo: null, hadPlaying: false,
+    route: { mode: 'direct', v: 'copy', a: 'copy' },
+    vodTranscoded: false, vodOffset: 0, vodDuration: NaN,
+  };
+  S.caps = { ffmpeg: null, ffprobe: null, h264_encoder: null, version: '' };
+
+  function enc(s) { return encodeURIComponent(s); }
+  function buildStreamUrl(item, mode, fmt) {
+    const c = S.creds;
+    if (mode === 'live') return `${c.server}/live/${enc(c.username)}/${enc(c.password)}/${item.stream_id}.${fmt}`;
+    const ext = (item.container_extension || 'mp4').replace(/^\./, '');
+    return `${c.server}/movie/${enc(c.username)}/${enc(c.password)}/${item.stream_id}.${ext}`;
+  }
+  function proxied(url) {
+    if (!S.proxy) return url;
+    return `http://127.0.0.1:${S.proxy.port}/p/${S.proxy.token}?u=${encodeURIComponent(url)}`;
+  }
+  function transcodeUrl(url, r, opts) {
+    const q = new URLSearchParams({ u: url, v: r.v, a: r.a, live: opts.live ? '1' : '0', ss: String(Math.max(0, Math.floor(opts.ss || 0))) });
+    return `http://127.0.0.1:${S.proxy.port}/t/${S.proxy.token}?${q.toString()}`;
+  }
+
+  // --- supporto codec di WebView2 (MSE) ---
+  const mseOk = (t) => { try { return !!window.MediaSource && MediaSource.isTypeSupported(t); } catch { return false; } };
+  const HEVC_OK = mseOk('video/mp4; codecs="hvc1.1.6.L120.90"') || mseOk('video/mp4; codecs="hev1.1.6.L120.90"');
+  const HEVC10_OK = mseOk('video/mp4; codecs="hvc1.2.4.L120.90"');
+  function mseVideoOk(codec) { return !codec || mseOk(`video/mp4; codecs="${codec}"`); }
+  function mseAudioOk(codec) {
+    if (!codec) return true;
+    if (/^(mp3|mpeg)/i.test(codec)) return mseOk('audio/mpeg');
+    return mseOk(`audio/mp4; codecs="${codec}"`);
+  }
+  // cosa si può copiare senza conversione nel flusso MPEG-TS letto da mpegts.js (nomi ffprobe)
+  function probeVideoOk(info) {
+    const c = (info.video_codec || '').toLowerCase();
+    if (!c || c === 'h264') return true;
+    if (c === 'hevc') return /10/.test(info.pix_fmt || '') ? HEVC10_OK : HEVC_OK;
+    return false;
+  }
+  function probeAudioOk(info) {
+    const c = (info.audio_codec || '').toLowerCase();
+    return !c || c === 'aac' || c === 'mp3' || (c === 'opus' && mseOk('audio/mp4; codecs="opus"'));
+  }
+  async function probeRoute(url) {
+    const info = await invoke('probe_stream', { streamUrl: url });
+    return { info, route: { mode: 'transcode', v: probeVideoOk(info) ? 'copy' : 'h264', a: probeAudioOk(info) ? 'copy' : 'aac' } };
+  }
+
+  // --- percorso di conversione memorizzato per canale ---
+  const routeKey = (id) => 'xp.route.' + id;
+  function getSavedRoute(id) {
+    const r = lsGet(routeKey(id), null);
+    return r && (r.v === 'h264' || r.a === 'aac') ? { mode: 'transcode', v: r.v === 'h264' ? 'h264' : 'copy', a: r.a === 'aac' ? 'aac' : 'copy' } : null;
+  }
+  function saveRoute(id, r) { lsSet(routeKey(id), { v: r.v, a: r.a, t: Date.now() }); }
+  function mergeRoute(a, b) {
+    return { mode: 'transcode', v: (a.v === 'h264' || b.v === 'h264') ? 'h264' : 'copy', a: (a.a === 'aac' || b.a === 'aac') ? 'aac' : 'copy' };
+  }
+  function describeRoute(r) {
+    const p = [];
+    if (r.v === 'h264') p.push(`video → H.264 (${S.caps.h264_encoder || 'libx264'})`);
+    if (r.a === 'aac') p.push('audio → AAC');
+    return p.length ? p.join(', ') : 'remux senza conversione';
+  }
+
+  async function escalate(item, mode, wanted, reason) {
+    if (S.current !== item) return false;
+    if (!S.caps.ffmpeg) {
+      try { S.caps = await invoke('get_media_capabilities', { refresh: true }); renderCaps(); } catch { /* resta senza ffmpeg */ }
+    }
+    if (S.current !== item) return false;
+    if (!S.caps.ffmpeg) {
+      setHint(`${reason}. Per riprodurlo nel player integrato installa ffmpeg (winget install Gyan.FFmpeg), oppure usa "Apri in MPV/VLC esterno".`);
+      return false;
+    }
+    const base = P.route.mode === 'transcode' ? P.route : { v: 'copy', a: 'copy' };
+    const route = mergeRoute(base, wanted);
+    if (P.route.mode === 'transcode' && route.v === P.route.v && route.a === P.route.a) return false;
+    if (mode === 'live') saveRoute(item.stream_id, route);
+    toast(`${reason} → ${describeRoute(route)}`);
+    const opts = { route, keepRetries: true };
+    if (mode === 'vod') { opts.ss = currentPlayTime(); opts.duration = currentDuration(); }
+    playItem(item, mode, opts);
+    return true;
+  }
+
+  // --- buffer adattivo per i live: il più piccolo possibile, cresce solo se ci sono scatti ---
+  const LAT_PRESETS = {
+    min: { start: 1.0, floor: 0.6 },
+    bal: { start: 2.5, floor: 2.0 },
+    stable: { start: 5.0, floor: 4.0 },
+  };
+  const L = { mode: 'min', target: 1, timer: null, lastStall: 0, lastDecrease: 0, lastJump: 0, stalls: 0, ahead: 0 };
+  L.mode = LAT_PRESETS[lsGet('xp.latMode', 'min')] ? lsGet('xp.latMode', 'min') : 'min';
+  function latPreset() { return LAT_PRESETS[L.mode]; }
+  function latLoad() {
+    const p = latPreset();
+    const saved = Number(lsGet('xp.latTarget.' + L.mode, p.start));
+    L.target = Math.min(8, Math.max(p.floor, isFinite(saved) ? saved : p.start));
+  }
+  function latSave() { lsSet('xp.latTarget.' + L.mode, Math.round(L.target * 100) / 100); }
+  function bufferAhead() {
+    const b = video.buffered;
+    if (!b.length) return 0;
+    return Math.max(0, b.end(b.length - 1) - video.currentTime);
+  }
+  function latStart() {
+    latStop();
+    latLoad();
+    L.lastStall = L.lastDecrease = performance.now();
+    L.stalls = 0;
+    L.timer = setInterval(latTick, 250);
+  }
+  function latStop() {
+    clearInterval(L.timer);
+    L.timer = null;
+    if (video.playbackRate !== 1) video.playbackRate = 1;
+    updateLatencyUi(true);
+  }
+  function latTick() {
+    if (video.paused || video.readyState < 3) { updateLatencyUi(); return; }
+    const ahead = bufferAhead();
+    L.ahead = ahead;
+    const t = L.target, b = video.buffered;
+    if (ahead > t + 4 && b.length) {
+      // troppo indietro (es. dopo una pausa): salto al bordo live mantenendo il margine
+      L.lastJump = performance.now();
+      video.currentTime = b.end(b.length - 1) - t;
+      video.playbackRate = 1;
+      updateLatencyUi();
+      return;
+    }
+    // recupero morbido con la velocità (pitch preservato), niente salti udibili
+    let rate = 1;
+    if (ahead > t + 0.25) rate = Math.min(1.15, 1 + (ahead - t) * 0.08);
+    else if (ahead < t * 0.5) rate = 0.97;
+    if (Math.abs(video.playbackRate - rate) > 0.004) video.playbackRate = rate;
+    const now = performance.now(), p = latPreset();
+    if (t > p.floor && now - L.lastStall > 45000 && now - L.lastDecrease > 30000) {
+      L.target = Math.max(p.floor, t - 0.15);
+      L.lastDecrease = now;
+      latSave();
+    }
+    updateLatencyUi();
+  }
+  function latOnStall() {
+    if (performance.now() - L.lastJump < 1500) return;
+    L.stalls += 1;
+    L.target = Math.min(8, L.target + Math.max(0.4, L.target * 0.5));
+    L.lastStall = performance.now();
+    latSave();
+  }
+  let latUiLast = 0;
+  function updateLatencyUi(force) {
+    const now = performance.now();
+    if (!force && now - latUiLast < 500) return;
+    latUiLast = now;
+    const el = $('info-latency');
+    if (!S.current || S.currentMode !== 'live' || !L.timer) { el.textContent = ''; return; }
+    el.textContent = `Buffer ${L.ahead.toFixed(1)} s · obiettivo ${L.target.toFixed(1)} s · velocità ${video.playbackRate.toFixed(2)}×` +
+      (L.stalls ? ` · ${L.stalls} scatt${L.stalls === 1 ? 'o' : 'i'}: buffer aumentato` : '');
+  }
+
+  function destroyPlayer() {
+    clearTimeout(P.retryTimer); P.retryTimer = null;
+    clearInterval(P.watchdog); P.watchdog = null;
+    clearTimeout(P.healthTimer); P.healthTimer = null;
+    clearInterval(P.startTimer); P.startTimer = null;
+    latStop();
+    if (P.mpegts) {
+      const m = P.mpegts; P.mpegts = null;
+      try { m.pause(); } catch { /* già fermo */ }
+      try { m.unload(); } catch { /* già scaricato */ }
+      try { m.detachMediaElement(); } catch { /* già staccato */ }
+      try { m.destroy(); } catch { /* già distrutto */ }
+    }
+    if (P.hls) {
+      const h = P.hls; P.hls = null;
+      try { h.destroy(); } catch { /* già distrutto */ }
+    }
+    video.removeAttribute('src');
+    try { video.load(); } catch { /* nessuna sorgente */ }
+    P.mediaInfo = null;
+  }
+
+  function setSpinner(on) { $('player-spinner').classList.toggle('hidden', !on); }
+  function setStatus(msg) { $('info-status').textContent = msg || ''; }
+  function setHint(msg) { const el = $('info-hint'); el.textContent = msg || ''; el.classList.toggle('hidden', !msg); }
+  function showError(msg) {
+    setSpinner(false);
+    $('player-error-text').textContent = msg;
+    $('player-error').classList.remove('hidden');
+    setStatus('Errore di riproduzione');
+  }
+  function hideError() { $('player-error').classList.add('hidden'); }
+
+  function resetPlayerUi() {
+    S.current = null; S.currentMode = null; S.currentUrl = '';
+    $('player-empty').classList.remove('hidden');
+    hideError(); setSpinner(false); setHint(''); setStatus('');
+    $('info-name').textContent = 'Nessun contenuto in riproduzione';
+    $('info-cat').textContent = ''; $('info-tech').textContent = ''; $('info-latency').textContent = '';
+    $('info-type').classList.add('hidden');
+    $('info-logo').innerHTML = '';
+    ['btn-external', 'btn-copy', 'btn-fav'].forEach((id) => { $(id).disabled = true; });
+    $('seek-row').classList.add('hidden'); $('live-badge').classList.add('hidden');
+    $('time').textContent = '';
+    updatePlayButton();
+    renderList(true);
+  }
+
+  function renderInfo(item, mode) {
+    $('player-empty').classList.add('hidden');
+    $('info-name').textContent = item.name;
+    $('info-name').title = item.name;
+    const type = $('info-type');
+    type.classList.remove('hidden');
+    type.textContent = mode === 'live' ? 'LIVE' : 'VOD';
+    type.className = 'text-[10px] font-bold tracking-wider rounded px-1.5 py-0.5 ' + (mode === 'live' ? 'bg-red-600 text-white' : 'bg-indigo-600 text-white');
+    const catName = S.catNames[mode].get(item.category_id) || '';
+    const parts = [catName, item.num ? `N. ${item.num}` : '', mode === 'vod' && item.rating > 0 ? `★ ${Number(item.rating).toFixed(1)}` : ''].filter(Boolean);
+    $('info-cat').textContent = parts.join(' · ');
+    const logo = $('info-logo');
+    if (item.stream_icon && /^https?:\/\//i.test(item.stream_icon)) {
+      logo.innerHTML = `<img src="${escapeHtml(item.stream_icon)}" referrerpolicy="no-referrer" class="w-full h-full object-contain" alt="">`;
+      const img = logo.querySelector('img');
+      img.addEventListener('error', () => { logo.textContent = initials(item.name); }, { once: true });
+    } else {
+      logo.textContent = initials(item.name);
+    }
+    ['btn-external', 'btn-copy', 'btn-fav'].forEach((id) => { $(id).disabled = false; });
+    $('seek-row').classList.toggle('hidden', mode === 'live');
+    $('live-badge').classList.toggle('hidden', mode !== 'live');
+    $('fmt-select').classList.toggle('hidden', mode !== 'live');
+    $('lat-select').classList.toggle('hidden', mode !== 'live');
+    updateFavButton();
+    updateTech();
+  }
+
+  function updateFavButton() {
+    const b = $('btn-fav');
+    if (!S.current) { b.textContent = '☆ Aggiungi ai preferiti'; return; }
+    b.textContent = isFav(S.currentMode, S.current.stream_id) ? '★ Rimuovi dai preferiti' : '☆ Aggiungi ai preferiti';
+  }
+
+  function updateTech() {
+    if (!S.current) { $('info-tech').textContent = ''; return; }
+    const bits = [];
+    const tr = P.route.mode === 'transcode';
+    if (S.currentMode === 'live') {
+      bits.push(P.fmt === 'm3u8' ? 'HLS (hls.js)' : (tr ? 'MPEG-TS via ffmpeg' : 'MPEG-TS diretto'));
+    } else {
+      const ext = (S.current.container_extension || 'mp4').toUpperCase();
+      bits.push(ext + (P.vodTranscoded ? (P.route.v === 'copy' && P.route.a === 'copy' ? ' (remux ffmpeg)' : ' (ffmpeg)') : ' (diretto)'));
+    }
+    if (tr) bits.push(describeRoute(P.route));
+    if (video.videoWidth) bits.push(`${video.videoWidth}×${video.videoHeight}`);
+    const mi = P.mediaInfo;
+    if (mi) {
+      if (mi.videoCodec) bits.push(mi.videoCodec);
+      if (mi.audioCodec) bits.push(mi.audioCodec);
+      if (mi.fps) bits.push(Math.round(mi.fps) + ' fps');
+    }
+    $('info-tech').textContent = bits.join(' · ');
+  }
+
+  function playItem(item, mode, opts) {
+    opts = opts || {};
+    destroyPlayer();
+    hideError();
+    setHint('');
+    S.current = item;
+    S.currentMode = mode;
+    if (!opts.keepRetries) P.retries = 0;
+    P.hadPlaying = false;
+    P.route = { mode: 'direct', v: 'copy', a: 'copy' };
+    P.vodTranscoded = false;
+    P.vodOffset = 0;
+    P.vodDuration = opts.duration && isFinite(opts.duration) ? opts.duration : NaN;
+    renderInfo(item, mode);
+    renderList(true);
+    setSpinner(true);
+    if (mode === 'live') startLive(item, opts.fmt || S.liveFormat, opts.route);
+    else startVod(item, opts);
+  }
+
+  function mpegtsReady() { return !!(window.mpegts && mpegts.isSupported() && mpegts.getFeatureList().mseLivePlayback); }
+
+  function startLive(item, fmt, forcedRoute) {
+    P.fmt = fmt;
+    const tsUrl = buildStreamUrl(item, 'live', 'ts');
+    if (fmt === 'm3u8' || !mpegtsReady()) {
+      const hlsUrl = buildStreamUrl(item, 'live', 'm3u8');
+      P.fmt = 'm3u8';
+      S.currentUrl = hlsUrl;
+      updateTech();
+      setStatus('Connessione allo stream HLS…');
+      if (window.Hls && Hls.isSupported()) startHls(hlsUrl, true);
+      else { video.src = proxied(hlsUrl); video.play().catch(() => {}); }
+      startWatchdog();
+      return;
+    }
+    S.currentUrl = tsUrl;
+    let route = forcedRoute || null;
+    if (!route && fmt === 'ffmpeg') route = { mode: 'transcode', v: 'copy', a: 'aac' };
+    if (!route) route = getSavedRoute(item.stream_id);
+    if (route && !S.caps.ffmpeg) route = null;
+    if (route) {
+      P.route = route;
+      setStatus(`Conversione in tempo reale: ${describeRoute(route)}`);
+      startMpegts(transcodeUrl(tsUrl, route, { live: true }), true, item, 'live');
+    } else {
+      setStatus('Connessione allo stream…');
+      startMpegts(proxied(tsUrl), true, item, 'live');
+    }
+    updateTech();
+    startWatchdog();
+  }
+
+  function startMpegts(src, isLive, item, mode) {
+    const config = isLive
+      ? {
+          enableWorker: true,
+          lazyLoad: false,
+          enableStashBuffer: false,
+          liveBufferLatencyChasing: false,
+          autoCleanupSourceBuffer: true,
+          autoCleanupMaxBackwardDuration: 20,
+          autoCleanupMinBackwardDuration: 10,
+          fixAudioTimestampGap: true,
+        }
+      : {
+          enableWorker: true,
+          lazyLoad: true,
+          lazyLoadMaxDuration: 120,
+          lazyLoadRecoverDuration: 30,
+          enableStashBuffer: true,
+          autoCleanupSourceBuffer: true,
+          autoCleanupMaxBackwardDuration: 60,
+          autoCleanupMinBackwardDuration: 30,
+          fixAudioTimestampGap: true,
+        };
+    const player = mpegts.createPlayer({ type: 'mpegts', isLive, url: src }, config);
+    P.mpegts = player;
+    player.on(mpegts.Events.ERROR, (type, detail, info) => {
+      if (P.mpegts !== player) return;
+      onMpegtsError(item, mode, type, detail, info);
+    });
+    player.on(mpegts.Events.MEDIA_INFO, (mi) => {
+      if (P.mpegts !== player) return;
+      onMediaInfo(item, mode, mi);
+    });
+    player.attachMediaElement(video);
+    player.load();
+    if (isLive) {
+      latLoad();
+      gatedStart(player);
+    } else {
+      const pr = player.play();
+      if (pr && pr.catch) pr.catch(() => { /* autoplay bloccato */ });
+    }
+  }
+
+  // avvio appena c'è un minimo di buffer: zapping rapido senza scatto iniziale
+  function gatedStart(player) {
+    const need = Math.min(1.0, Math.max(0.3, L.target * 0.6));
+    const t0 = performance.now();
+    clearInterval(P.startTimer);
+    P.startTimer = setInterval(() => {
+      if (P.mpegts !== player) { clearInterval(P.startTimer); P.startTimer = null; return; }
+      if (bufferAhead() >= need || performance.now() - t0 > 5000) {
+        clearInterval(P.startTimer); P.startTimer = null;
+        const pr = player.play();
+        if (pr && pr.catch) pr.catch(() => { /* autoplay bloccato: l'utente può premere play */ });
+      }
+    }, 40);
+  }
+
+  function onMediaInfo(item, mode, mi) {
+    P.mediaInfo = mi;
+    updateTech();
+    if (P.route.mode !== 'direct' || !mi) return;
+    const wanted = { v: 'copy', a: 'copy' }, bad = [];
+    if (mi.hasVideo && mi.videoCodec && !mseVideoOk(mi.videoCodec)) { wanted.v = 'h264'; bad.push('video ' + mi.videoCodec); }
+    if (mi.hasAudio && mi.audioCodec && !mseAudioOk(mi.audioCodec)) { wanted.a = 'aac'; bad.push('audio ' + mi.audioCodec); }
+    // traccia scartata da mpegts.js (MPEG-2 video, MP2/AC3/DTS non riconosciuti): ffmpeg la recupera
+    if (mode === 'live' && mi.hasVideo === false) { wanted.v = 'h264'; bad.push('video non leggibile'); }
+    if (mode === 'live' && mi.hasAudio === false) { wanted.a = 'aac'; bad.push('audio non leggibile'); }
+    if (bad.length) escalate(item, mode, wanted, 'Codec non supportato da WebView2 (' + bad.join(', ') + ')');
+  }
+
+  function onMpegtsError(item, mode, type, detail, info) {
+    const msg = (info && (info.msg || info.code)) ? `${detail} (${info.msg || info.code})` : `${type}: ${detail}`;
+    const fail = () => {
+      if (S.current !== item) return;
+      if (mode === 'vod') { destroyPlayer(); showError(`Riproduzione interrotta: ${msg}`); } else onLiveError(msg);
+    };
+    const decodeProblem = type === mpegts.ErrorTypes.MEDIA_ERROR || /MSE|codec|unsupported/i.test(`${detail} ${info && info.msg ? info.msg : ''}`);
+    if (decodeProblem) {
+      const mi = P.mediaInfo || {};
+      const wanted = { v: mi.videoCodec && !mseVideoOk(mi.videoCodec) ? 'h264' : 'copy', a: 'aac' };
+      if (P.route.mode === 'transcode' && P.route.a === 'aac') wanted.v = 'h264';
+      escalate(item, mode, wanted, 'Errore di decodifica').then((done) => { if (!done) fail(); });
+      return;
+    }
+    fail();
+  }
+
+  // dopo 4 s di riproduzione: se una traccia non viene decodificata, si converte solo quella
+  function scheduleHealthCheck(item, mode) {
+    clearTimeout(P.healthTimer);
+    P.healthTimer = setTimeout(() => healthCheck(item, mode), 4000);
+  }
+  function healthCheck(item, mode) {
+    if (S.current !== item || video.paused || video.readyState < 2) return;
+    const vB = video.webkitVideoDecodedByteCount, aB = video.webkitAudioDecodedByteCount;
+    if (typeof vB !== 'number' || typeof aB !== 'number') return;
+    const mi = P.mediaInfo;
+    const expectVideo = mi ? mi.hasVideo !== false : true;
+    const expectAudio = mi ? mi.hasAudio !== false : mode === 'vod';
+    const wanted = { v: 'copy', a: 'copy' }, bad = [];
+    if (expectVideo && P.route.v !== 'h264' && (vB === 0 || video.videoWidth === 0)) { wanted.v = 'h264'; bad.push('video'); }
+    if (expectAudio && P.route.a !== 'aac' && aB === 0) { wanted.a = 'aac'; bad.push('audio'); }
+    if (bad.length) escalate(item, mode, wanted, `Nessun ${bad.join(' né ')} decodificato`);
+  }
+
+  function startHls(url, isLive) {
+    const stable = L.mode === 'stable';
+    const hls = new Hls({
+      enableWorker: true,
+      lowLatencyMode: true,
+      liveSyncDurationCount: stable ? 3 : 2,
+      liveMaxLatencyDurationCount: stable ? 6 : 4,
+      maxLiveSyncPlaybackRate: 1.1,
+      maxBufferLength: isLive ? 10 : 60,
+      backBufferLength: isLive ? 10 : 30,
+      manifestLoadingMaxRetry: 3,
+      levelLoadingMaxRetry: 4,
+      fragLoadingMaxRetry: 6,
+    });
+    P.hls = hls;
+    hls.on(Hls.Events.MANIFEST_PARSED, () => { if (P.hls === hls) video.play().catch(() => {}); });
+    hls.on(Hls.Events.ERROR, (_e, data) => {
+      if (P.hls !== hls || !data.fatal) return;
+      if (data.type === Hls.ErrorTypes.MEDIA_ERROR) { hls.recoverMediaError(); return; }
+      const code = data.response && data.response.code ? ` HTTP ${data.response.code}` : '';
+      if (S.currentMode === 'vod') { destroyPlayer(); showError(`Errore HLS: ${data.details}${code}`); return; }
+      onLiveError(`${data.details}${code}`);
+    });
+    hls.loadSource(proxied(url));
+    hls.attachMedia(video);
+  }
+
+  function onLiveError(msg) {
+    if (!S.current || S.currentMode !== 'live') return;
+    const item = S.current;
+    P.retries += 1;
+    if (P.retries <= 3) {
+      // al secondo errore in MPEG-TS si prova HLS, molti provider lo supportano meglio
+      const curFmt = P.fmt === 'm3u8' ? 'm3u8' : 'ts';
+      const nextFmt = P.retries === 2 ? (curFmt === 'ts' ? 'm3u8' : 'ts') : (P.fmt === 'ffmpeg' ? 'ffmpeg' : curFmt);
+      setStatus(`Errore (${msg}). Nuovo tentativo ${P.retries}/3${nextFmt !== P.fmt ? ' in ' + (nextFmt === 'm3u8' ? 'HLS' : 'MPEG-TS') : ''}…`);
+      setSpinner(true);
+      clearTimeout(P.retryTimer);
+      P.retryTimer = setTimeout(() => {
+        if (S.current === item) playItem(item, 'live', { keepRetries: true, fmt: nextFmt });
+      }, 800 * P.retries);
+    } else {
+      destroyPlayer();
+      showError(`Impossibile riprodurre il canale: ${msg}. Il canale potrebbe essere offline o il limite di connessioni dell'account raggiunto.`);
+    }
+  }
+
+  function startWatchdog() {
+    clearInterval(P.watchdog);
+    P.lastTime = -1; P.stallTicks = 0;
+    P.watchdog = setInterval(() => {
+      if (!S.current || S.currentMode !== 'live' || video.paused) { P.stallTicks = 0; return; }
+      if (video.currentTime === P.lastTime) {
+        P.stallTicks += 1;
+        if (P.stallTicks >= 3) { P.stallTicks = 0; onLiveError('stream bloccato da oltre 15 secondi'); }
+      } else {
+        P.stallTicks = 0; P.lastTime = video.currentTime;
+        if (P.retries && video.currentTime > 5) P.retries = 0;
+      }
+    }, 5000);
+  }
+
+  async function startVod(item, opts) {
+    const url = buildStreamUrl(item, 'vod');
+    S.currentUrl = url;
+    const ext = (item.container_extension || 'mp4').toLowerCase();
+    const saved = lsGet('xp.resume.' + item.stream_id, 0);
+    const resumeAt = opts.ss != null ? opts.ss : (saved > 30 ? saved : 0);
+    if (opts.route) { startVodTranscoded(item, url, opts.route, resumeAt, P.vodDuration, false); return; }
+    if (ext === 'm3u8' && window.Hls && Hls.isSupported()) { startHls(url, false); return; }
+    const native = ['mp4', 'm4v', 'mov', 'webm'].includes(ext);
+    if (!native && S.caps.ffprobe) {
+      setStatus('Analisi codec del file…');
+      try {
+        const { info, route } = await probeRoute(url);
+        if (S.current !== item) return;
+        startVodTranscoded(item, url, route, resumeAt, info.duration, resumeAt > 0);
+        return;
+      } catch (e) {
+        if (S.current !== item) return;
+        setHint(`Analisi non riuscita (${errText(e)}): provo la riproduzione diretta.`);
+      }
+    } else if (!native && !S.caps.ffmpeg) {
+      setHint(`Formato .${ext}: senza ffmpeg il player integrato potrebbe non avere audio (AC3/DTS) o video (HEVC). Installa ffmpeg (winget install Gyan.FFmpeg) o usa "Apri in MPV/VLC esterno".`);
+    }
+    setStatus('Caricamento film…');
+    video.src = proxied(url);
+    if (resumeAt > 0) {
+      video.addEventListener('loadedmetadata', () => {
+        if (S.current === item && isFinite(video.duration) && resumeAt < video.duration - 60) {
+          video.currentTime = resumeAt;
+          toast(`Ripresa da ${fmtTime(resumeAt)}`);
+        }
+      }, { once: true });
+    }
+    video.play().catch(() => {});
+  }
+
+  function startVodTranscoded(item, url, route, ss, duration, announce) {
+    P.route = route;
+    P.vodTranscoded = true;
+    P.vodOffset = ss > 0 ? ss : 0;
+    if (duration && isFinite(duration) && duration > 0) P.vodDuration = duration;
+    if (P.vodOffset > 0 && isFinite(P.vodDuration) && P.vodOffset > P.vodDuration - 60) P.vodOffset = 0;
+    setStatus(route.v === 'copy' && route.a === 'copy' ? 'Remux del file in corso…' : `Conversione in tempo reale: ${describeRoute(route)}`);
+    if (announce && P.vodOffset > 0) toast(`Ripresa da ${fmtTime(P.vodOffset)}`);
+    updateTech();
+    startMpegts(transcodeUrl(url, route, { live: false, ss: P.vodOffset }), false, item, 'vod');
+  }
+
+  function currentPlayTime() { return P.vodTranscoded ? P.vodOffset + video.currentTime : video.currentTime; }
+  function currentDuration() { return P.vodTranscoded ? P.vodDuration : video.duration; }
+
+  const restartTranscodedAt = debounce((t) => {
+    if (!S.current || S.currentMode !== 'vod' || !P.vodTranscoded) return;
+    playItem(S.current, 'vod', { route: P.route, ss: t, duration: P.vodDuration, keepRetries: true });
+  }, 250);
+
+  function seekTo(t) {
+    if (!S.current || S.currentMode !== 'vod') return;
+    const d = currentDuration();
+    t = Math.max(0, isFinite(d) && d > 0 ? Math.min(d - 1, t) : t);
+    if (!P.vodTranscoded) { video.currentTime = t; return; }
+    // nel buffer già scaricato si salta subito, altrimenti ffmpeg riparte dal punto scelto
+    const rel = t - P.vodOffset, b = video.buffered;
+    for (let i = 0; i < b.length; i++) {
+      if (rel >= b.start(i) && rel <= b.end(i) - 0.5) { video.currentTime = rel; return; }
+    }
+    P.vodOffset = t;
+    restartTranscodedAt(t);
+  }
+
+  // eventi del tag video
+  video.addEventListener('playing', () => {
+    setSpinner(false);
+    hideError();
+    if (S.current && !P.hadPlaying) {
+      P.hadPlaying = true;
+      scheduleHealthCheck(S.current, S.currentMode);
+      if (S.currentMode === 'live' && P.mpegts) latStart();
+    }
+    const tr = P.route.mode === 'transcode' ? ` · ${describeRoute(P.route)}` : '';
+    setStatus((S.currentMode === 'live' ? 'In onda' : 'In riproduzione') + tr);
+    updatePlayButton();
+    updateTech();
+  });
+  video.addEventListener('waiting', () => {
+    if (!S.current) return;
+    setSpinner(true);
+    if (P.hadPlaying && S.currentMode === 'live' && L.timer) latOnStall();
+  });
+  video.addEventListener('pause', () => { updatePlayButton(); if (S.current && video.readyState >= 2) setStatus('In pausa'); });
+  video.addEventListener('play', updatePlayButton);
+  video.addEventListener('loadedmetadata', updateTech);
+  video.addEventListener('volumechange', updateVolumeUi);
+  video.addEventListener('ended', () => { if (S.current && S.currentMode === 'vod') { lsDel('xp.resume.' + S.current.stream_id); setStatus('Terminato'); } });
+  video.addEventListener('error', async () => {
+    if (!S.current || P.mpegts || P.hls) return;
+    if (!video.getAttribute('src')) return;
+    const item = S.current, mode = S.currentMode;
+    const err = video.error;
+    const codes = { 1: 'riproduzione interrotta', 2: 'errore di rete', 3: 'errore di decodifica', 4: 'formato o codec non supportato' };
+    const msg = err ? (codes[err.code] || 'errore sconosciuto') : 'errore sconosciuto';
+    if (mode === 'live') { onLiveError(msg); return; }
+    if (err && (err.code === 3 || err.code === 4)) {
+      let wanted = { v: 'h264', a: 'aac' };
+      if (S.caps.ffprobe) {
+        setStatus('Analisi codec del file…');
+        try { wanted = (await probeRoute(S.currentUrl)).route; } catch { /* conversione completa */ }
+        if (S.current !== item) return;
+      }
+      if (await escalate(item, mode, wanted, `Il file non è riproducibile direttamente (${msg})`)) return;
+    }
+    showError(`Impossibile riprodurre il film nel player integrato: ${msg}. Installa ffmpeg per la conversione automatica oppure apri il film con MPV/VLC.`);
+  });
+
+  let lastResumeSave = 0;
+  video.addEventListener('timeupdate', () => {
+    updateTimeUi();
+    if (S.current && S.currentMode === 'vod' && video.currentTime > 0) {
+      const now = Date.now();
+      if (now - lastResumeSave > 5000) { lastResumeSave = now; lsSet('xp.resume.' + S.current.stream_id, Math.floor(currentPlayTime())); }
+    }
+  });
+  video.addEventListener('progress', updateTimeUi);
+
+  // ------------------------------------------------------------------ controlli custom
+  const seek = $('seek'), volume = $('volume'), wrap = $('player-wrap');
+  let seeking = false;
+
+  function setRangeFill(el) { const p = ((el.value - el.min) / (el.max - el.min)) * 100; el.style.setProperty('--p', p + '%'); }
+  function updatePlayButton() { $('btn-play').innerHTML = video.paused || !S.current ? ICONS.play : ICONS.pause; }
+  function updateVolumeUi() {
+    $('btn-mute').innerHTML = video.muted || video.volume === 0 ? ICONS.mute : ICONS.vol;
+    volume.value = video.muted ? 0 : Math.round(video.volume * 100);
+    setRangeFill(volume);
+  }
+  function updateTimeUi() {
+    if (!S.current) { $('time').textContent = ''; return; }
+    if (S.currentMode === 'live') {
+      $('time').textContent = video.currentTime ? fmtTime(video.currentTime) : '';
+      return;
+    }
+    const d = currentDuration(), c = currentPlayTime();
+    $('time').textContent = `${fmtTime(c)} / ${isFinite(d) && d > 0 ? fmtTime(d) : '--:--'}`;
+    if (!seeking && isFinite(d) && d > 0) { seek.value = Math.round((c / d) * 1000); setRangeFill(seek); }
+  }
+
+  function togglePlay() {
+    if (!S.current) return;
+    if (video.paused) {
+      if (S.currentMode === 'live' && !P.mpegts && !P.hls && !video.getAttribute('src')) { playItem(S.current, 'live'); return; }
+      video.play().catch(() => {});
+    } else {
+      video.pause();
+    }
+  }
+  function toggleFullscreen() {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    else wrap.requestFullscreen().catch(() => {});
+  }
+
+  $('btn-play').addEventListener('click', togglePlay);
+  $('btn-stop').addEventListener('click', () => { destroyPlayer(); resetPlayerUi(); });
+  $('btn-mute').addEventListener('click', () => {
+    if (video.muted || video.volume === 0) { video.muted = false; if (video.volume === 0) video.volume = 0.5; }
+    else video.muted = true;
+    lsSet('xp.volume', { v: video.volume, m: video.muted });
+  });
+  volume.addEventListener('input', () => {
+    video.volume = volume.value / 100;
+    video.muted = video.volume === 0;
+    setRangeFill(volume);
+    lsSet('xp.volume', { v: video.volume, m: video.muted });
+  });
+  seek.addEventListener('input', () => {
+    seeking = true; setRangeFill(seek);
+    const d = currentDuration();
+    if (isFinite(d) && d > 0) $('time').textContent = `${fmtTime((seek.value / 1000) * d)} / ${fmtTime(d)}`;
+  });
+  seek.addEventListener('change', () => {
+    const d = currentDuration();
+    if (isFinite(d) && d > 0) seekTo((seek.value / 1000) * d);
+    seeking = false;
+  });
+  $('fmt-select').addEventListener('change', (ev) => {
+    S.liveFormat = ['ts', 'm3u8', 'ffmpeg'].includes(ev.target.value) ? ev.target.value : 'ts';
+    lsSet('xp.liveFormat', S.liveFormat);
+    if (S.liveFormat === 'ffmpeg' && !S.caps.ffmpeg) toast('ffmpeg non trovato: installalo con "winget install Gyan.FFmpeg" e riavvia l\'app', 'error');
+    if (S.current && S.currentMode === 'live') playItem(S.current, 'live');
+  });
+  $('lat-select').addEventListener('change', (ev) => {
+    L.mode = LAT_PRESETS[ev.target.value] ? ev.target.value : 'min';
+    lsSet('xp.latMode', L.mode);
+    latLoad();
+    if (S.current && S.currentMode === 'live' && P.hls) playItem(S.current, 'live');
+    updateLatencyUi(true);
+  });
+  $('btn-reload').addEventListener('click', () => { if (S.current) playItem(S.current, S.currentMode); });
+  $('btn-pip').addEventListener('click', async () => {
+    try {
+      if (document.pictureInPictureElement) await document.exitPictureInPicture();
+      else if (S.current) await video.requestPictureInPicture();
+    } catch (e) { toast('Picture in Picture non disponibile: ' + errText(e), 'error'); }
+  });
+  $('btn-fs').addEventListener('click', toggleFullscreen);
+  video.addEventListener('click', togglePlay);
+  video.addEventListener('dblclick', toggleFullscreen);
+  $('err-retry').addEventListener('click', () => { if (S.current) playItem(S.current, S.currentMode); });
+  $('err-external').addEventListener('click', openExternal);
+
+  let idleTimer = null;
+  function poke() {
+    wrap.classList.remove('idle');
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => { if (!video.paused && S.current) wrap.classList.add('idle'); }, 3000);
+  }
+  wrap.addEventListener('mousemove', poke);
+  wrap.addEventListener('mouseleave', () => { if (!video.paused && S.current) wrap.classList.add('idle'); });
+  video.addEventListener('pause', () => wrap.classList.remove('idle'));
+
+  // ------------------------------------------------------------------ azioni info
+  async function openExternal() {
+    if (!S.current || !S.currentUrl) return;
+    const item = S.current, mode = S.currentMode;
+    // per i live con limite di 1 connessione si chiude prima lo stream interno
+    const url = mode === 'live' ? buildStreamUrl(item, 'live', 'ts') : S.currentUrl;
+    try {
+      const resumeAt = mode === 'vod' ? currentPlayTime() : 0;
+      destroyPlayer();
+      setSpinner(false); hideError();
+      const used = await invoke('open_in_external_player', { streamUrl: url, title: item.name, live: mode === 'live' });
+      setStatus(`Aperto in ${used}` + (resumeAt > 5 ? ` (eri a ${fmtTime(resumeAt)})` : ''));
+      toast(`Stream aperto in ${used}`, 'ok');
+      updatePlayButton();
+    } catch (e) {
+      toast(errText(e), 'error');
+      setStatus(errText(e));
+    }
+  }
+  $('btn-external').addEventListener('click', openExternal);
+
+  async function copyText(text) {
+    try { await navigator.clipboard.writeText(text); return true; } catch { /* fallback sotto */ }
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch { ok = false; }
+    ta.remove();
+    return ok;
+  }
+  $('btn-copy').addEventListener('click', async () => {
+    if (!S.currentUrl) return;
+    const ok = await copyText(S.currentUrl);
+    toast(ok ? 'URL copiato negli appunti' : 'Copia non riuscita', ok ? 'ok' : 'error');
+  });
+  $('btn-fav').addEventListener('click', () => { if (S.current) toggleFav(S.currentMode, S.current); });
+
+  // ------------------------------------------------------------------ tastiera
+  document.addEventListener('keydown', (ev) => {
+    if ($('app-view').classList.contains('hidden')) return;
+    const tag = (ev.target && ev.target.tagName) || '';
+    const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+    if (typing) {
+      if (ev.key === 'Escape') ev.target.blur();
+      if (ev.target.id === 'stream-search' && (ev.key === 'ArrowDown' || ev.key === 'Enter')) {
+        ev.preventDefault(); ev.target.blur();
+        if (S.filtered.length) {
+          if (ev.key === 'Enter') { scrollToIndex(0); playItem(S.filtered[0], S.mode); } else stepChannel(1);
+        }
+      }
+      return;
+    }
+    if (ev.ctrlKey || ev.altKey || ev.metaKey) return;
+    switch (ev.key) {
+      case ' ': case 'k': ev.preventDefault(); togglePlay(); break;
+      case 'f': case 'F': ev.preventDefault(); toggleFullscreen(); break;
+      case 'm': case 'M': ev.preventDefault(); $('btn-mute').click(); break;
+      case 'ArrowDown': ev.preventDefault(); stepChannel(1); break;
+      case 'ArrowUp': ev.preventDefault(); stepChannel(-1); break;
+      case 'ArrowRight': if (S.currentMode === 'vod') { ev.preventDefault(); seekTo(currentPlayTime() + 10); } break;
+      case 'ArrowLeft': if (S.currentMode === 'vod') { ev.preventDefault(); seekTo(currentPlayTime() - 10); } break;
+      case '/': ev.preventDefault(); $('stream-search').focus(); $('stream-search').select(); break;
+      default: break;
+    }
+  });
+
+  // ------------------------------------------------------------------ avvio
+  async function init() {
+    updateModeButtons();
+    updatePlayButton();
+    const vol = lsGet('xp.volume', null);
+    if (vol && typeof vol.v === 'number') { video.volume = Math.min(1, Math.max(0, vol.v)); video.muted = !!vol.m; }
+    updateVolumeUi();
+    setRangeFill(seek);
+
+    if (!TAURI || !TAURI.core) {
+      showLoginError('API Tauri non disponibile: questa pagina va aperta dall\'app desktop (cargo tauri dev).');
+      return;
+    }
+    if (!window.mpegts || !window.Hls) {
+      toast('Librerie video non caricate dal CDN: controlla la connessione a Internet.', 'error');
+    }
+    try { S.proxy = await invoke('get_proxy_info'); } catch (e) { toast('Proxy locale non disponibile: ' + errText(e), 'error'); }
+    // la rilevazione di ffmpeg/encoder prova davvero la GPU: non blocca il login
+    invoke('get_media_capabilities').then((c) => { S.caps = c; renderCaps(); }).catch(() => { renderCaps(); });
+
+    let saved = lsGet(CREDS_KEY, null);
+    if (!saved || !saved.server) {
+      try { saved = await invoke('load_credentials'); } catch { saved = null; }
+      if (saved && saved.server) lsSet(CREDS_KEY, saved);
+    }
+    if (saved && saved.server && saved.username && saved.password) {
+      fillLoginForm(saved);
+      await doLogin(saved, true);
+    } else {
+      $('f-server').focus();
+    }
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>
