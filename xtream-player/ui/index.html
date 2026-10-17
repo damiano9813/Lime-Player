@@ -4,22 +4,56 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Xtream Player</title>
-<!-- generati da "npm run build:ui" (Tailwind compilato, mpegts.js e hls.js locali) -->
+<!-- generati da "npm run build:ui" (Tailwind compilato con i token del design system, font, mpegts.js e hls.js locali) -->
 <link rel="stylesheet" href="vendor/app.css">
 <script src="vendor/mpegts.min.js"></script>
 <script src="vendor/hls.min.js"></script>
 <style>
-  :root { color-scheme: dark; }
-  html, body { background: #09090b; }
-  * { scrollbar-width: thin; scrollbar-color: #3f3f46 transparent; }
+  html, body { background: var(--surface-100); }
+  body { font-feature-settings: "cv11"; }
+  * { scrollbar-width: thin; scrollbar-color: var(--surface-400) transparent; }
   ::-webkit-scrollbar { width: 8px; height: 8px; }
-  ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 8px; }
+  ::-webkit-scrollbar-thumb { background: var(--surface-400); border-radius: 8px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  button:focus-visible, [tabindex]:focus-visible { outline: 2px solid #818cf8; outline-offset: 2px; }
+  button:focus-visible, [tabindex]:focus-visible, input:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
   #list-scroller:focus-visible { outline-offset: -2px; }
+
+  /* componenti del design system (vedi il design system "Xtream Player") */
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: .5rem; height: 36px; padding: 0 1rem; border-radius: 8px; border: 1px solid transparent; font-size: 14px; line-height: 20px; font-weight: 700; white-space: nowrap; transition: background-color .15s, border-color .15s, color .15s, transform .1s; }
+  .btn:active:not(:disabled) { transform: translateY(1px); }
+  .btn:disabled { opacity: .4; cursor: not-allowed; box-shadow: none; }
+  .btn-primary { background: var(--accent); color: var(--on-accent); box-shadow: var(--shadow-glow); }
+  .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+  .btn-secondary { background: var(--surface-300); color: var(--ink); border-color: var(--line); }
+  .btn-secondary:hover:not(:disabled) { background: var(--surface-400); border-color: var(--line-strong); }
+  .btn-ghost { background: transparent; color: var(--ink-muted); }
+  .btn-ghost:hover:not(:disabled) { background: var(--surface-300); color: var(--ink); }
+  .btn-danger { background: var(--live); color: var(--on-live); }
+  .btn-danger:hover:not(:disabled) { filter: brightness(1.08); }
+  .btn-sm { height: 30px; padding: 0 .75rem; font-size: 12px; line-height: 16px; border-radius: 6px; }
+  .icon-btn { display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 6px; color: var(--ink-muted); transition: background-color .15s, color .15s; }
+  .icon-btn:hover:not(:disabled) { background: var(--surface-300); color: var(--ink); }
+  .icon-btn:disabled { opacity: .5; }
+  .vbtn { display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 6px; color: var(--ink); transition: background-color .15s, color .15s; }
+  .vbtn:hover { background: var(--glass-hover); }
+  .vbtn[aria-pressed="true"] { color: var(--accent); }
+  .field { width: 100%; height: 40px; padding: 0 .75rem; background: var(--surface-0); border: 1px solid var(--line); border-radius: 8px; color: var(--ink); font-size: 14px; font-weight: 500; outline: none; transition: border-color .15s, box-shadow .15s; }
+  .field::placeholder { color: var(--ink-subtle); }
+  .field:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .field:focus-visible { outline: none; }
+  .field:disabled { opacity: .6; }
+  .field-sm { height: 36px; }
+  .overline { font-size: 11px; line-height: 14px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-subtle); }
+  .badge { display: inline-flex; align-items: center; gap: 4px; height: 18px; padding: 0 6px; border-radius: 4px; font-size: 10px; line-height: 12px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; white-space: nowrap; }
+  .badge-live { background: var(--live); color: var(--on-live); }
+  .badge-film { background: var(--accent); color: var(--on-accent); }
+  .badge-dot { width: 6px; height: 6px; border-radius: 9999px; background: currentColor; animation: pulse-dot 1.6s ease-in-out infinite; }
+  @keyframes pulse-dot { 50% { opacity: .35; } }
+  .logo-tile { background: var(--surface-300); border: 1px solid var(--line); }
+
   input[type=range].xr { -webkit-appearance: none; appearance: none; background: transparent; cursor: pointer; height: 16px; }
-  input[type=range].xr::-webkit-slider-runnable-track { height: 4px; border-radius: 4px; background: linear-gradient(to right, #6366f1 var(--p, 0%), rgba(255,255,255,.25) var(--p, 0%)); transition: height .12s; }
-  input[type=range].xr::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; margin-top: -5px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 3px rgba(99,102,241,.45); }
+  input[type=range].xr::-webkit-slider-runnable-track { height: 4px; border-radius: 9999px; background: linear-gradient(to right, var(--accent) var(--p, 0%), var(--track) var(--p, 0%)); transition: height .12s; }
+  input[type=range].xr::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; margin-top: -5px; border-radius: 50%; background: var(--ink); box-shadow: var(--shadow-thumb); }
   #seek-row:hover input[type=range].xr::-webkit-slider-runnable-track { height: 6px; }
   #seek-row:hover input[type=range].xr::-webkit-slider-thumb { margin-top: -4px; }
   #player-wrap:fullscreen { max-height: none; width: 100vw; height: 100vh; border-radius: 0; border: 0; aspect-ratio: auto; }
@@ -34,23 +68,26 @@
   #player-wrap.idle #osd-top:not(.force) { opacity: 0; }
   .theater #sidebar, .theater #list-col { display: none; }
   .theater #player-wrap { max-height: calc(100vh - 12rem); }
-  .row-active { background: rgba(79,70,229,.18); box-shadow: inset 3px 0 0 #6366f1; }
-  .vrow .fav-btn { opacity: 0; transition: opacity .15s; }
+  .row-active { background: var(--accent-soft); }
+  .row-active::before { content: ""; position: absolute; left: 0; top: 14px; bottom: 14px; width: 3px; border-radius: 9999px; background: var(--accent); }
+  .row-active .logo-tile { border-color: var(--accent); }
+  .vrow .fav-btn { opacity: 0; transition: opacity .15s, color .15s, background-color .15s; }
   .vrow:hover .fav-btn, .vrow .fav-btn.is-fav, .vrow .fav-btn:focus-visible { opacity: 1; }
-  mark.hl { background: rgba(250,204,21,.2); color: #fde68a; border-radius: 2px; }
+  mark.hl { background: var(--accent-soft); color: var(--accent-ink); border-radius: 2px; }
   .eq { display: inline-flex; align-items: flex-end; gap: 2px; height: 12px; }
-  .eq i { width: 3px; height: 3px; background: #818cf8; border-radius: 1px; animation: eq 1s ease-in-out infinite; }
+  .eq i { width: 3px; height: 3px; background: var(--accent); border-radius: 1px; animation: eq 1s ease-in-out infinite; }
   .eq i:nth-child(2) { animation-delay: -.4s; }
   .eq i:nth-child(3) { animation-delay: -.7s; }
   .eq.paused i { animation-play-state: paused; }
   @keyframes eq { 0%, 100% { height: 3px; } 50% { height: 12px; } }
-  .kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 1.5rem; height: 1.5rem; padding: 0 .4rem; border-radius: .375rem; border: 1px solid #3f3f46; border-bottom-width: 2px; background: #18181b; color: #e4e4e7; font: 600 11px/1 ui-sans-serif, system-ui, sans-serif; }
-  .menu-opt { width: 100%; display: flex; align-items: center; gap: .5rem; padding: .45rem .5rem; border-radius: .5rem; color: #d4d4d8; text-align: left; }
-  .menu-opt:hover { background: rgba(255,255,255,.08); color: #fff; }
-  .menu-opt .chk { width: 1rem; height: 1rem; flex-shrink: 0; color: #818cf8; visibility: hidden; }
-  .menu-opt.on { color: #fff; }
+  .kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 1.5rem; height: 1.5rem; padding: 0 .4rem; border-radius: 6px; border: 1px solid var(--line-strong); border-bottom-width: 2px; background: var(--surface-200); color: var(--ink); font-family: inherit; font-size: 11px; font-weight: 700; line-height: 1; }
+  .menu-opt { width: 100%; height: 34px; display: flex; align-items: center; gap: .5rem; padding: 0 .5rem; border-radius: 8px; color: var(--ink-muted); text-align: left; font-weight: 500; }
+  .menu-opt:hover { background: var(--glass-hover); color: var(--ink); }
+  .menu-opt .chk { width: 1rem; height: 1rem; flex-shrink: 0; color: var(--accent); visibility: hidden; }
+  .menu-opt.on { color: var(--ink); font-weight: 700; }
   .menu-opt.on .chk { visibility: visible; }
-  .menu-opt small { margin-left: auto; color: #71717a; font-size: 11px; }
+  .menu-opt small { margin-left: auto; color: var(--ink-subtle); font-size: 11px; font-weight: 500; }
+  .glass { background: var(--glass); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); border: 1px solid var(--glass-line); }
   .spin { animation: spin 0.9s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
   @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
@@ -59,55 +96,55 @@
   @keyframes pop-in { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: none; } }
   #modal:not(.hidden) { animation: fade-in .15s ease-out; }
   #modal:not(.hidden) .modal-card { animation: pop-in .15s ease-out; }
+  @media (prefers-reduced-motion: reduce) { .spin, .eq i, .badge-dot, .animate-pulse { animation: none !important; } }
+  /* il JS mostra e nasconde con "hidden": deve vincere sul display dei componenti qui sopra */
+  .hidden { display: none !important; }
 </style>
 </head>
-<body class="h-full bg-zinc-950 text-zinc-100 overflow-hidden antialiased">
+<body class="h-full bg-s1 text-ink font-sans overflow-hidden antialiased">
 
 <!-- ============================ LOGIN ============================ -->
-<div id="login-view" class="h-full flex items-center justify-center p-6 bg-[radial-gradient(ellipse_at_top,rgba(79,70,229,0.18),transparent_60%)]">
+<div id="login-view" class="h-full flex items-center justify-center p-6 bg-[radial-gradient(ellipse_at_top,rgba(245,165,36,0.10),transparent_55%)]">
   <div class="w-full max-w-md">
-    <div class="flex items-center gap-3 mb-8 justify-center">
-      <div class="w-12 h-12 rounded-2xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-900/40">
-        <svg class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11.04-6.86a1 1 0 0 0 0-1.72L9.5 4.28A1 1 0 0 0 8 5.14z"/></svg>
+    <div class="flex flex-col items-center gap-4 mb-8 text-center">
+      <div class="w-14 h-14 rounded-2xl bg-accent flex items-center justify-center shadow-glow">
+        <svg class="w-7 h-7 text-on-accent" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11.04-6.86a1 1 0 0 0 0-1.72L9.5 4.28A1 1 0 0 0 8 5.14z"/></svg>
       </div>
       <div>
-        <h1 class="text-2xl font-semibold tracking-tight">Xtream Player</h1>
-        <p class="text-sm text-zinc-400">Player IPTV per account Xtream Codes</p>
+        <h1 class="text-[28px] leading-[34px] font-extrabold tracking-tight">Xtream Player</h1>
+        <p class="text-sm text-ink-muted mt-1">Player IPTV per account Xtream Codes</p>
       </div>
     </div>
 
-    <form id="login-form" class="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-6 space-y-4 shadow-2xl" novalidate>
+    <form id="login-form" class="bg-s2 border border-line rounded-2xl p-6 space-y-4 shadow-pop" novalidate>
       <div>
-        <label class="block text-xs font-medium text-zinc-400 mb-1.5" for="f-server">URL server</label>
-        <input id="f-server" type="text" autocomplete="off" spellcheck="false" placeholder="http://provider.example:8080"
-          class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 disabled:opacity-60">
-        <p class="text-[11px] text-zinc-500 mt-1">Indirizzo e porta forniti dal provider, senza percorsi aggiuntivi.</p>
+        <label class="block text-xs font-semibold text-ink-muted mb-1.5" for="f-server">URL server</label>
+        <input id="f-server" type="text" autocomplete="off" spellcheck="false" placeholder="http://provider.example:8080" class="field">
+        <p class="text-[11px] text-ink-subtle mt-1.5">Indirizzo e porta forniti dal provider, senza percorsi aggiuntivi.</p>
       </div>
       <div>
-        <label class="block text-xs font-medium text-zinc-400 mb-1.5" for="f-user">Username</label>
-        <input id="f-user" type="text" autocomplete="off" spellcheck="false"
-          class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 disabled:opacity-60">
+        <label class="block text-xs font-semibold text-ink-muted mb-1.5" for="f-user">Username</label>
+        <input id="f-user" type="text" autocomplete="off" spellcheck="false" class="field">
       </div>
       <div>
-        <label class="block text-xs font-medium text-zinc-400 mb-1.5" for="f-pass">Password</label>
+        <label class="block text-xs font-semibold text-ink-muted mb-1.5" for="f-pass">Password</label>
         <div class="relative">
-          <input id="f-pass" type="password" autocomplete="off" spellcheck="false"
-            class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 pr-11 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 disabled:opacity-60">
-          <button type="button" id="toggle-pass" class="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800" title="Mostra password" aria-label="Mostra password" aria-pressed="false"></button>
+          <input id="f-pass" type="password" autocomplete="off" spellcheck="false" class="field !pr-11">
+          <button type="button" id="toggle-pass" class="icon-btn absolute right-1 top-1/2 -translate-y-1/2" title="Mostra password" aria-label="Mostra password" aria-pressed="false"></button>
         </div>
       </div>
-      <label class="flex items-center gap-2 text-sm text-zinc-300 select-none cursor-pointer">
-        <input id="f-remember" type="checkbox" checked class="w-4 h-4 accent-indigo-600">
+      <label class="flex items-center gap-2 text-sm text-ink-muted select-none cursor-pointer">
+        <input id="f-remember" type="checkbox" checked class="w-4 h-4 accent-accent">
         Ricorda credenziali e accedi automaticamente
       </label>
-      <div id="login-error" role="alert" class="hidden text-sm text-red-300 bg-red-950/50 border border-red-900/60 rounded-lg px-3 py-2"></div>
-      <button id="login-btn" type="submit" class="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 disabled:cursor-wait text-white font-medium rounded-lg py-2.5 text-sm transition">
+      <div id="login-error" role="alert" class="hidden text-sm text-danger bg-danger-soft rounded-lg px-3 py-2"></div>
+      <button id="login-btn" type="submit" class="btn btn-primary w-full !h-11 disabled:cursor-wait">
         <svg id="login-spin" class="hidden w-4 h-4 spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M12 3a9 9 0 1 0 9 9" stroke-linecap="round"/></svg>
         <span id="login-btn-text">Accedi</span>
       </button>
-      <button id="login-cancel" type="button" class="hidden w-full text-xs text-zinc-400 hover:text-white py-1">Annulla e modifica le credenziali</button>
+      <button id="login-cancel" type="button" class="hidden w-full text-xs text-ink-muted hover:text-ink py-1">Annulla e modifica le credenziali</button>
     </form>
-    <p class="text-center text-xs text-zinc-600 mt-6">Le credenziali restano su questo PC (localStorage e cartella di configurazione dell'app).</p>
+    <p class="text-center text-xs text-ink-subtle mt-6">Le credenziali restano su questo PC (localStorage e cartella di configurazione dell'app).</p>
   </div>
 </div>
 
@@ -115,35 +152,34 @@
 <div id="app-view" class="hidden h-full flex">
 
   <!-- Sidebar sinistra -->
-  <aside id="sidebar" class="w-72 shrink-0 bg-zinc-900 border-r border-zinc-800 flex flex-col min-h-0">
-    <div class="p-4 border-b border-zinc-800 space-y-3">
-      <div class="flex items-center gap-2">
-        <div class="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center">
-          <svg class="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11.04-6.86a1 1 0 0 0 0-1.72L9.5 4.28A1 1 0 0 0 8 5.14z"/></svg>
+  <aside id="sidebar" class="w-72 shrink-0 bg-s2 border-r border-line flex flex-col min-h-0">
+    <div class="p-4 space-y-3">
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded-lg bg-accent flex items-center justify-center shadow-glow">
+          <svg class="w-4 h-4 text-on-accent" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11.04-6.86a1 1 0 0 0 0-1.72L9.5 4.28A1 1 0 0 0 8 5.14z"/></svg>
         </div>
-        <span class="font-semibold tracking-tight flex-1">Xtream Player</span>
-        <button id="help-btn" class="p-1.5 rounded-md text-zinc-400 hover:text-white hover:bg-zinc-800" title="Scorciatoie da tastiera (?)" aria-label="Scorciatoie da tastiera">
+        <span class="font-extrabold tracking-tight flex-1">Xtream Player</span>
+        <button id="help-btn" class="icon-btn" title="Scorciatoie da tastiera (?)" aria-label="Scorciatoie da tastiera">
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg>
         </button>
-        <button id="refresh-btn" class="p-1.5 rounded-md text-zinc-400 hover:text-white hover:bg-zinc-800 disabled:opacity-60" title="Ricarica categorie e liste" aria-label="Ricarica categorie e liste">
+        <button id="refresh-btn" class="icon-btn" title="Ricarica categorie e liste" aria-label="Ricarica categorie e liste">
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
         </button>
       </div>
-      <div class="grid grid-cols-2 gap-1 p-1 bg-zinc-950 rounded-lg border border-zinc-800" role="tablist">
-        <button data-mode="live" role="tab" class="mode-btn text-sm font-medium py-1.5 rounded-md transition">Live TV</button>
-        <button data-mode="vod" role="tab" class="mode-btn text-sm font-medium py-1.5 rounded-md transition">Film VOD</button>
+      <div class="grid grid-cols-2 gap-1 p-1 bg-s0 rounded-lg border border-line" role="tablist">
+        <button data-mode="live" role="tab" class="mode-btn h-[30px] text-[13px] font-bold rounded-md transition">Live TV</button>
+        <button data-mode="vod" role="tab" class="mode-btn h-[30px] text-[13px] font-bold rounded-md transition">Film VOD</button>
       </div>
       <div class="relative">
-        <svg class="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-        <input id="cat-search" type="text" placeholder="Cerca categoria…" spellcheck="false" aria-label="Cerca categoria"
-          class="w-full bg-zinc-950 border border-zinc-800 rounded-lg pl-8 pr-3 py-2 text-sm outline-none focus:border-indigo-500">
+        <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-ink-subtle pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="cat-search" type="text" placeholder="Cerca categoria…" spellcheck="false" aria-label="Cerca categoria" class="field field-sm !pl-9">
       </div>
     </div>
-    <nav id="cat-list" class="flex-1 overflow-y-auto p-2 space-y-0.5 min-h-0" aria-label="Categorie"></nav>
-    <div class="p-3 border-t border-zinc-800">
-      <div id="account-box" class="text-xs text-zinc-400 space-y-1 mb-2"></div>
-      <div id="caps-box" class="text-[11px] text-zinc-500 mb-2 truncate"></div>
-      <button id="logout-btn" class="w-full flex items-center justify-center gap-1.5 text-xs text-zinc-300 hover:text-white bg-zinc-800 hover:bg-zinc-700 rounded-md py-1.5 transition">
+    <nav id="cat-list" class="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5 min-h-0" aria-label="Categorie"></nav>
+    <div class="p-3 border-t border-line">
+      <div id="account-box" class="text-xs text-ink-muted space-y-1 mb-2"></div>
+      <div id="caps-box" class="text-[11px] text-ink-subtle mb-2 truncate"></div>
+      <button id="logout-btn" class="btn btn-ghost btn-sm w-full">
         <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
         Esci e dimentica credenziali
       </button>
@@ -151,46 +187,47 @@
   </aside>
 
   <!-- Colonna centrale -->
-  <section id="list-col" class="w-96 shrink-0 border-r border-zinc-800 flex flex-col min-h-0 bg-zinc-950">
-    <div class="p-4 border-b border-zinc-800 space-y-3">
+  <section id="list-col" class="w-96 shrink-0 border-r border-line flex flex-col min-h-0 bg-s1">
+    <div class="p-4 space-y-3">
       <div class="flex items-center justify-between gap-2">
-        <h2 id="list-title" class="font-semibold truncate">Canali</h2>
+        <h2 id="list-title" class="text-base font-bold truncate">Canali</h2>
         <div class="flex items-center gap-1 shrink-0">
-          <span id="list-count" class="text-xs text-zinc-500 mr-1"></span>
-          <button id="list-clear-recent" class="hidden text-xs px-2 py-1 rounded-md text-zinc-400 hover:text-white hover:bg-zinc-800" title="Svuota la cronologia">Svuota</button>
-          <button id="list-locate" class="hidden p-1.5 rounded-md text-zinc-400 hover:text-white hover:bg-zinc-800" title="Vai al contenuto in riproduzione" aria-label="Vai al contenuto in riproduzione">
+          <span id="list-count" class="text-[11px] font-semibold tabular-nums text-ink-subtle mr-1"></span>
+          <button id="list-clear-recent" class="hidden btn btn-ghost btn-sm" title="Svuota la cronologia">Svuota</button>
+          <button id="list-locate" class="hidden icon-btn" title="Vai al contenuto in riproduzione" aria-label="Vai al contenuto in riproduzione">
             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
           </button>
         </div>
       </div>
       <div class="relative">
-        <svg class="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-        <input id="stream-search" type="text" placeholder="Cerca nella lista" spellcheck="false" aria-label="Cerca nella lista"
-          class="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-8 pr-14 py-2 text-sm outline-none focus:border-indigo-500">
+        <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-ink-subtle pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="stream-search" type="text" placeholder="Cerca nella lista" spellcheck="false" aria-label="Cerca nella lista" class="field field-sm !pl-9 !pr-14">
         <span id="stream-search-kbd" class="kbd absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">/</span>
-        <button id="stream-search-clear" class="hidden absolute right-1.5 top-1/2 -translate-y-1/2 p-1 rounded text-zinc-500 hover:text-white" title="Svuota (Esc)" aria-label="Svuota ricerca">
+        <button id="stream-search-clear" class="hidden icon-btn absolute right-1 top-1/2 -translate-y-1/2 !w-7 !h-7" title="Svuota (Esc)" aria-label="Svuota ricerca">
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
         </button>
       </div>
     </div>
-    <div id="list-scroller" class="flex-1 overflow-y-auto relative min-h-0 outline-none" tabindex="0" aria-label="Elenco contenuti">
+    <div id="list-scroller" class="flex-1 overflow-y-auto relative min-h-0 outline-none px-2" tabindex="0" aria-label="Elenco contenuti">
       <div id="list-spacer" class="relative w-full">
         <div id="list-rows"></div>
       </div>
-      <div id="list-state" class="hidden absolute inset-0 flex flex-col items-center justify-center gap-3 p-6 text-center text-sm text-zinc-400"></div>
+      <div id="list-state" class="hidden absolute inset-0 flex flex-col items-center justify-center gap-3 p-6 text-center text-sm text-ink-muted"></div>
     </div>
   </section>
 
   <!-- Area principale -->
   <main class="flex-1 min-w-0 flex flex-col min-h-0">
     <div class="flex-1 min-h-0 overflow-y-auto p-5 space-y-4">
-      <div id="player-wrap" class="relative w-full aspect-video max-h-[72vh] bg-black rounded-xl overflow-hidden border border-zinc-800 select-none">
+      <div id="player-wrap" class="relative w-full aspect-video max-h-[72vh] bg-s0 rounded-xl overflow-hidden border border-line select-none">
         <video id="video" class="w-full h-full bg-black" playsinline preload="auto"></video>
 
-        <div id="player-empty" class="absolute inset-0 flex flex-col items-center justify-center text-zinc-500 gap-4 p-6 text-center">
-          <svg class="w-14 h-14 text-zinc-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="m10 9 5 3-5 3z" fill="currentColor"/></svg>
-          <p class="text-sm text-zinc-400">Seleziona un canale o un film dalla lista</p>
-          <div class="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs text-zinc-500">
+        <div id="player-empty" class="absolute inset-0 flex flex-col items-center justify-center gap-5 p-6 text-center bg-[radial-gradient(ellipse_at_center,rgba(245,165,36,0.07),transparent_60%)]">
+          <div class="w-16 h-16 rounded-2xl bg-s3 border border-line flex items-center justify-center text-accent">
+            <svg class="w-7 h-7" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11.04-6.86a1 1 0 0 0 0-1.72L9.5 4.28A1 1 0 0 0 8 5.14z"/></svg>
+          </div>
+          <p class="text-base font-bold text-ink">Seleziona un canale o un film dalla lista</p>
+          <div class="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs text-ink-subtle">
             <span class="flex items-center gap-1.5"><span class="kbd">/</span> cerca</span>
             <span class="flex items-center gap-1.5"><span class="kbd">↑</span><span class="kbd">↓</span> cambia canale</span>
             <span class="flex items-center gap-1.5"><span class="kbd">?</span> tutte le scorciatoie</span>
@@ -198,36 +235,38 @@
         </div>
 
         <div id="player-spinner" class="hidden absolute inset-0 flex flex-col items-center justify-center gap-3 pointer-events-none">
-          <svg class="w-12 h-12 text-indigo-400 spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 3a9 9 0 1 0 9 9" stroke-linecap="round"/></svg>
-          <p id="spinner-text" class="text-xs text-zinc-300 bg-black/50 rounded-md px-2 py-1 max-w-md empty:hidden"></p>
+          <svg class="w-12 h-12 text-accent spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 3a9 9 0 1 0 9 9" stroke-linecap="round"/></svg>
+          <p id="spinner-text" class="glass text-xs text-ink rounded-md px-2 py-1 max-w-md empty:hidden"></p>
         </div>
 
         <div id="osd-top" class="absolute inset-x-0 top-0 px-5 pt-4 pb-12 bg-gradient-to-b from-black/80 to-transparent items-center gap-3 pointer-events-none transition-opacity duration-300">
-          <div id="osd-logo" class="w-11 h-11 shrink-0 rounded-lg bg-white/10 overflow-hidden flex items-center justify-center text-sm font-semibold text-zinc-300"></div>
+          <div id="osd-logo" class="w-11 h-11 shrink-0 rounded-lg bg-glass-hover border border-glass-line overflow-hidden flex items-center justify-center text-sm font-extrabold text-ink-muted"></div>
           <div class="min-w-0">
-            <div id="osd-name" class="text-base font-semibold text-white truncate"></div>
-            <div id="osd-sub" class="text-xs text-zinc-300 truncate"></div>
+            <div id="osd-name" class="text-base font-bold text-ink truncate"></div>
+            <div id="osd-sub" class="text-xs text-ink-muted truncate"></div>
           </div>
         </div>
 
-        <div id="osd-center" class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none px-5 py-3 rounded-2xl bg-black/65 text-white text-lg font-semibold tabular-nums flex items-center gap-2 opacity-0 transition-opacity duration-200" aria-live="polite"></div>
+        <div id="osd-center" class="glass absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none px-5 py-3 rounded-2xl text-ink text-xl font-bold tabular-nums flex items-center gap-2 opacity-0 transition-opacity duration-200" aria-live="polite"></div>
 
-        <div id="player-error" class="hidden absolute inset-0 bg-black/80 flex flex-col items-center justify-center gap-4 p-6 pb-16 text-center">
-          <svg class="w-10 h-10 text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v5M12 16h.01"/></svg>
-          <p id="player-error-text" class="text-sm text-zinc-200 max-w-lg select-text"></p>
+        <div id="player-error" class="hidden absolute inset-0 bg-scrim backdrop-blur-sm flex flex-col items-center justify-center gap-4 p-6 pb-16 text-center">
+          <div class="w-12 h-12 rounded-full bg-danger-soft flex items-center justify-center">
+            <svg class="w-6 h-6 text-danger" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v5M12 16h.01"/></svg>
+          </div>
+          <p id="player-error-text" class="text-sm text-ink max-w-lg select-text"></p>
           <div class="flex gap-2">
-            <button id="err-retry" class="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sm">Riprova</button>
-            <button id="err-external" class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-sm font-medium">Apri in MPV/VLC</button>
+            <button id="err-retry" class="btn btn-secondary">Riprova</button>
+            <button id="err-external" class="btn btn-primary">Apri in MPV/VLC</button>
           </div>
         </div>
 
-        <div id="settings-menu" class="hidden absolute right-3 bottom-16 z-30 w-64 max-h-[calc(100%-5rem)] overflow-y-auto rounded-xl bg-zinc-900/95 border border-white/10 shadow-2xl p-2 text-sm" role="menu">
-          <p class="px-2 pt-1 pb-1 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Buffer canali live</p>
+        <div id="settings-menu" class="glass hidden absolute right-3 bottom-16 z-30 w-64 max-h-[calc(100%-5rem)] overflow-y-auto rounded-xl shadow-pop p-2 text-sm" role="menu">
+          <p class="overline px-2 py-1">Buffer canali live</p>
           <button class="menu-opt" data-lat="min" role="menuitemradio"><svg class="chk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>Latenza minima<small>~1 s</small></button>
           <button class="menu-opt" data-lat="bal" role="menuitemradio"><svg class="chk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>Bilanciata<small>~2,5 s</small></button>
           <button class="menu-opt" data-lat="stable" role="menuitemradio"><svg class="chk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>Stabile<small>~5 s</small></button>
-          <div class="h-px bg-white/10 my-2"></div>
-          <p class="px-2 pt-1 pb-1 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Modalità stream live</p>
+          <div class="h-px bg-glass-line my-2"></div>
+          <p class="overline px-2 py-1">Modalità stream live</p>
           <button class="menu-opt" data-fmt="ts" role="menuitemradio"><svg class="chk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>Auto (MPEG-TS)</button>
           <button class="menu-opt" data-fmt="m3u8" role="menuitemradio"><svg class="chk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>HLS</button>
           <button class="menu-opt" data-fmt="ffmpeg" role="menuitemradio"><svg class="chk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>Forza ffmpeg<small>converte l'audio</small></button>
@@ -235,44 +274,44 @@
 
         <div id="controls" class="absolute inset-x-0 bottom-0 px-4 pb-3 pt-10 bg-gradient-to-t from-black/90 via-black/50 to-transparent transition-opacity duration-300">
           <div id="seek-row" class="hidden relative mb-1">
-            <div id="seek-tip" class="hidden absolute bottom-5 -translate-x-1/2 px-1.5 py-0.5 rounded bg-black/85 text-[11px] tabular-nums text-white pointer-events-none"></div>
+            <div id="seek-tip" class="glass hidden absolute bottom-5 -translate-x-1/2 px-1.5 py-0.5 rounded text-[11px] font-semibold tabular-nums text-ink pointer-events-none"></div>
             <input id="seek" type="range" min="0" max="1000" value="0" step="1" class="xr w-full" aria-label="Posizione">
           </div>
-          <div class="flex items-center gap-1 text-white">
-            <button id="btn-play" class="p-2 rounded-md hover:bg-white/10" title="Play/Pausa (Spazio)" aria-label="Play/Pausa"></button>
-            <button id="btn-prev" class="hidden p-2 rounded-md hover:bg-white/10" title="Canale precedente (↑)" aria-label="Canale precedente">
+          <div class="flex items-center gap-1 text-ink">
+            <button id="btn-play" class="vbtn" title="Play/Pausa (Spazio)" aria-label="Play/Pausa"></button>
+            <button id="btn-prev" class="vbtn hidden" title="Canale precedente (↑)" aria-label="Canale precedente">
               <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zM20 6.2v11.6a1 1 0 0 1-1.5.86L9.6 12.86a1 1 0 0 1 0-1.72l8.9-5.8A1 1 0 0 1 20 6.2z"/></svg>
             </button>
-            <button id="btn-next" class="hidden p-2 rounded-md hover:bg-white/10" title="Canale successivo (↓)" aria-label="Canale successivo">
+            <button id="btn-next" class="vbtn hidden" title="Canale successivo (↓)" aria-label="Canale successivo">
               <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M16 5h2v14h-2zM4 6.2v11.6a1 1 0 0 0 1.5.86l8.9-5.8a1 1 0 0 0 0-1.72l-8.9-5.8A1 1 0 0 0 4 6.2z"/></svg>
             </button>
-            <button id="btn-back10" class="hidden p-2 rounded-md hover:bg-white/10" title="Indietro 10 s (←)" aria-label="Indietro 10 secondi">
+            <button id="btn-back10" class="vbtn hidden" title="Indietro 10 s (←)" aria-label="Indietro 10 secondi">
               <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><text x="12" y="15.5" font-size="8" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">10</text></svg>
             </button>
-            <button id="btn-fwd10" class="hidden p-2 rounded-md hover:bg-white/10" title="Avanti 10 s (→)" aria-label="Avanti 10 secondi">
+            <button id="btn-fwd10" class="vbtn hidden" title="Avanti 10 s (→)" aria-label="Avanti 10 secondi">
               <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/><text x="12" y="15.5" font-size="8" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">10</text></svg>
             </button>
-            <button id="btn-stop" class="p-2 rounded-md hover:bg-white/10" title="Stop" aria-label="Stop">
+            <button id="btn-stop" class="vbtn" title="Stop" aria-label="Stop">
               <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>
             </button>
-            <button id="btn-mute" class="p-2 rounded-md hover:bg-white/10" title="Muto (M)" aria-label="Muto"></button>
+            <button id="btn-mute" class="vbtn" title="Muto (M)" aria-label="Muto"></button>
             <input id="volume" type="range" min="0" max="100" value="100" class="xr w-24" aria-label="Volume" title="Volume (+/−, rotella del mouse)">
-            <span id="time" class="text-xs tabular-nums text-zinc-300 ml-2 whitespace-nowrap"></span>
-            <span id="live-badge" class="hidden ml-2 inline-flex items-center gap-1 text-[10px] font-bold tracking-wider bg-red-600 rounded px-1.5 py-0.5"><span class="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>LIVE</span>
+            <span id="time" class="text-xs font-semibold tabular-nums text-ink-muted ml-2 whitespace-nowrap"></span>
+            <span id="live-badge" class="hidden badge badge-live ml-2"><span class="badge-dot"></span>Live</span>
             <div class="flex-1"></div>
-            <button id="btn-settings" class="hidden p-2 rounded-md hover:bg-white/10" title="Impostazioni stream live" aria-label="Impostazioni stream live" aria-haspopup="menu" aria-expanded="false">
+            <button id="btn-settings" class="vbtn hidden" title="Impostazioni stream live" aria-label="Impostazioni stream live" aria-haspopup="menu" aria-expanded="false">
               <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             </button>
-            <button id="btn-reload" class="p-2 rounded-md hover:bg-white/10" title="Ricarica stream (R)" aria-label="Ricarica stream">
+            <button id="btn-reload" class="vbtn" title="Ricarica stream (R)" aria-label="Ricarica stream">
               <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
             </button>
-            <button id="btn-pip" class="p-2 rounded-md hover:bg-white/10" title="Picture in Picture (P)" aria-label="Picture in Picture">
+            <button id="btn-pip" class="vbtn" title="Picture in Picture (P)" aria-label="Picture in Picture">
               <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><rect x="12" y="12" width="7" height="5" rx="1" fill="currentColor"/></svg>
             </button>
-            <button id="btn-theater" class="p-2 rounded-md hover:bg-white/10" title="Modalità cinema (T)" aria-label="Modalità cinema" aria-pressed="false">
+            <button id="btn-theater" class="vbtn" title="Modalità cinema (T)" aria-label="Modalità cinema" aria-pressed="false">
               <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/></svg>
             </button>
-            <button id="btn-fs" class="p-2 rounded-md hover:bg-white/10" title="Schermo intero (F)" aria-label="Schermo intero">
+            <button id="btn-fs" class="vbtn" title="Schermo intero (F)" aria-label="Schermo intero">
               <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
             </button>
           </div>
@@ -280,27 +319,27 @@
       </div>
 
       <!-- Info canale -->
-      <div id="info-panel" class="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-wrap gap-4 items-start">
-        <div id="info-logo" class="w-20 h-20 shrink-0 rounded-lg bg-zinc-800 flex items-center justify-center overflow-hidden text-zinc-500 text-xl font-semibold"></div>
+      <div id="info-panel" class="bg-s2 border border-line rounded-xl p-4 flex flex-wrap gap-4 items-start">
+        <div id="info-logo" class="logo-tile w-20 h-20 shrink-0 rounded-lg flex items-center justify-center overflow-hidden text-ink-muted text-xl font-extrabold"></div>
         <div class="flex-1 min-w-[14rem] space-y-1.5">
           <div class="flex items-center gap-2 min-w-0">
-            <span id="info-type" class="hidden shrink-0 text-[10px] font-bold tracking-wider rounded px-1.5 py-0.5"></span>
-            <h3 id="info-name" class="text-lg font-semibold truncate select-text">Nessun contenuto in riproduzione</h3>
+            <span id="info-type" class="hidden badge shrink-0"></span>
+            <h3 id="info-name" class="text-xl font-bold tracking-tight truncate select-text">Nessun contenuto in riproduzione</h3>
           </div>
-          <p id="info-cat" class="text-sm text-zinc-400 truncate"></p>
-          <p id="info-status" class="text-xs text-zinc-300"></p>
-          <p id="info-tech" class="text-xs text-zinc-500 select-text"></p>
-          <p id="info-latency" class="text-xs text-zinc-500 tabular-nums"></p>
-          <div id="info-hint" class="hidden text-xs text-amber-300 bg-amber-950/40 border border-amber-900/50 rounded-md px-2 py-1.5 select-text"></div>
+          <p id="info-cat" class="text-sm text-ink-muted truncate"></p>
+          <p id="info-status" class="text-xs font-medium text-ink"></p>
+          <p id="info-tech" class="text-xs font-mono text-ink-subtle select-text"></p>
+          <p id="info-latency" class="text-xs font-mono text-ink-subtle tabular-nums"></p>
+          <div id="info-hint" class="hidden text-xs font-medium text-accent-ink bg-accent-soft rounded-md px-2 py-1.5 select-text"></div>
         </div>
         <div class="flex flex-col gap-2 shrink-0 w-52 ml-auto">
-          <button id="btn-external" disabled class="flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-sm font-medium transition">
+          <button id="btn-external" disabled class="btn btn-primary">
             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 3h7v7M21 3l-9 9M19 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5"/></svg>
             Apri in MPV/VLC
           </button>
           <div class="grid grid-cols-2 gap-2">
-            <button id="btn-fav" disabled class="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed text-sm transition"></button>
-            <button id="btn-copy" disabled class="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed text-sm transition" title="Copia URL stream negli appunti">
+            <button id="btn-fav" disabled class="btn btn-secondary !px-3 !gap-1.5"></button>
+            <button id="btn-copy" disabled class="btn btn-secondary !px-3 !gap-1.5" title="Copia URL stream negli appunti">
               <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
               URL
             </button>
@@ -312,15 +351,15 @@
 </div>
 
 <!-- Finestra modale (conferme, scorciatoie) -->
-<div id="modal" class="hidden fixed inset-0 z-40 bg-black/60 flex items-center justify-center p-6" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-  <div class="modal-card w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl p-5">
-    <h2 id="modal-title" class="text-base font-semibold mb-3"></h2>
-    <div id="modal-body" class="text-sm text-zinc-300"></div>
+<div id="modal" class="hidden fixed inset-0 z-40 bg-scrim backdrop-blur-sm flex items-center justify-center p-6" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+  <div class="modal-card w-full max-w-md bg-s2 border border-line rounded-2xl shadow-pop p-5">
+    <h2 id="modal-title" class="text-base font-bold mb-3"></h2>
+    <div id="modal-body" class="text-sm text-ink-muted"></div>
     <div id="modal-actions" class="flex justify-end gap-2 mt-5"></div>
   </div>
 </div>
 
-<div id="toast" role="status" aria-live="polite" class="hidden fixed bottom-5 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-lg text-sm shadow-2xl border"></div>
+<div id="toast" role="status" aria-live="polite" class="hidden fixed bottom-5 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl text-sm shadow-pop border"></div>
 
 <script src="js/core.js"></script>
 <script src="js/01-base.js"></script>

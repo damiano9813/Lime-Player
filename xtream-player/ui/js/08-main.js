@@ -17,7 +17,7 @@ function zapCommit() {
 }
 function zapDigit(d) {
   Z.digits = (Z.digits + d).slice(-5);
-  osd(`<span class="text-2xl">${escapeHtml(Z.digits)}</span><span class="text-zinc-400 animate-pulse">_</span>`);
+  osd(`<span class="text-2xl">${escapeHtml(Z.digits)}</span><span class="text-ink-muted animate-pulse">_</span>`);
   clearTimeout(Z.timer);
   Z.timer = setTimeout(zapCommit, 1200);
 }

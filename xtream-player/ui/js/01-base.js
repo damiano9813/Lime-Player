@@ -16,15 +16,15 @@ const lsDel = (k) => { try { localStorage.removeItem(k); } catch { /* ignorato *
 
 let toastTimer = null;
 const TOAST_ICONS = {
-  error: '<svg class="w-4 h-4 shrink-0 text-red-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v5M12 16h.01"/></svg>',
-  ok: '<svg class="w-4 h-4 shrink-0 text-emerald-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>',
-  info: '<svg class="w-4 h-4 shrink-0 text-indigo-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 11v5M12 8h.01"/></svg>',
+  error: '<svg class="w-4 h-4 shrink-0 text-danger" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v5M12 16h.01"/></svg>',
+  ok: '<svg class="w-4 h-4 shrink-0 text-success" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>',
+  info: '<svg class="w-4 h-4 shrink-0 text-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 11v5M12 8h.01"/></svg>',
 };
 function toast(msg, kind) {
   const el = $('toast');
   el.innerHTML = `${TOAST_ICONS[kind] || TOAST_ICONS.info}<span>${escapeHtml(msg)}</span>`;
-  el.className = 'show fixed bottom-5 left-1/2 -translate-x-1/2 z-50 max-w-xl flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm shadow-2xl border ' +
-    (kind === 'error' ? 'bg-red-950 border-red-800 text-red-100' : kind === 'ok' ? 'bg-emerald-950 border-emerald-800 text-emerald-100' : 'bg-zinc-800 border-zinc-700 text-zinc-100');
+  el.className = 'show fixed bottom-5 left-1/2 -translate-x-1/2 z-50 max-w-xl flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium shadow-pop border bg-s3 text-ink ' +
+    'border-line-strong';
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.add('hidden'), kind === 'error' ? 6000 : 3500);
 }
@@ -37,7 +37,7 @@ function openModal(title, bodyHtml, actions) {
   $('modal-title').textContent = title;
   $('modal-body').innerHTML = bodyHtml;
   $('modal-actions').innerHTML = actions.map((a, i) =>
-    `<button data-i="${i}" class="px-4 py-2 rounded-lg text-sm font-medium transition ${a.danger ? 'bg-red-600 hover:bg-red-500 text-white' : a.primary ? 'bg-indigo-600 hover:bg-indigo-500 text-white' : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200'}">${escapeHtml(a.label)}</button>`).join('');
+    `<button data-i="${i}" class="btn ${a.danger ? 'btn-danger' : a.primary ? 'btn-primary' : 'btn-secondary'}">${escapeHtml(a.label)}</button>`).join('');
   $('modal').classList.remove('hidden');
   const btns = $('modal-actions').querySelectorAll('button');
   (btns[0] || $('modal')).focus();
@@ -65,7 +65,7 @@ const SHORTCUTS = [
 ];
 function showShortcuts() {
   const rows = SHORTCUTS.map(([keys, desc]) =>
-    `<div class="flex items-center justify-between gap-4 py-1.5 border-b border-zinc-800/70 last:border-0"><span>${escapeHtml(desc)}</span><span class="flex gap-1 shrink-0">${keys.map((k) => `<span class="kbd">${escapeHtml(k)}</span>`).join('')}</span></div>`).join('');
+    `<div class="flex items-center justify-between gap-4 py-1.5 border-b border-line last:border-0"><span>${escapeHtml(desc)}</span><span class="flex gap-1 shrink-0">${keys.map((k) => `<span class="kbd">${escapeHtml(k)}</span>`).join('')}</span></div>`).join('');
   openModal('Scorciatoie da tastiera', rows, [{ label: 'Chiudi', value: true, primary: true }]);
 }
 $('help-btn').addEventListener('click', showShortcuts);

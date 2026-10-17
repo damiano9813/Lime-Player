@@ -113,22 +113,22 @@ function enterApp() {
 function renderAccount() {
   const a = S.account;
   if (!a) { $('account-box').innerHTML = ''; return; }
-  let exp = 'Illimitata', expCls = 'text-zinc-300', daysLeft = Infinity;
+  let exp = 'Illimitata', expCls = 'text-ink', daysLeft = Infinity;
   const ts = parseInt(a.exp_date, 10);
   if (ts > 0) {
     exp = new Date(ts * 1000).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' });
     daysLeft = Math.ceil((ts * 1000 - Date.now()) / 86400000);
-    if (daysLeft <= 0) { exp += ' (scaduto)'; expCls = 'text-red-300'; }
-    else if (daysLeft <= 7) { exp += ` (tra ${daysLeft} g)`; expCls = 'text-amber-300'; }
+    if (daysLeft <= 0) { exp += ' (scaduto)'; expCls = 'text-danger'; }
+    else if (daysLeft <= 7) { exp += ` (tra ${daysLeft} g)`; expCls = 'text-accent-ink'; }
   }
   const status = a.status || 'Sconosciuto';
   const ok = /active/i.test(status);
   $('account-box').innerHTML = `
-    <div class="flex items-center justify-between"><span class="text-zinc-200 font-medium truncate">${escapeHtml(a.username)}</span>
-      <span class="text-[10px] px-1.5 py-0.5 rounded ${ok ? 'bg-emerald-900/60 text-emerald-300' : 'bg-amber-900/60 text-amber-300'}">${escapeHtml(status)}</span></div>
+    <div class="flex items-center justify-between"><span class="text-ink font-bold truncate">${escapeHtml(a.username)}</span>
+      <span class="badge ${ok ? 'bg-success-soft text-success' : 'bg-accent-soft text-accent-ink'}">${escapeHtml(status)}</span></div>
     <div class="flex justify-between"><span>Scadenza</span><span class="${expCls}">${escapeHtml(exp)}</span></div>
-    <div class="flex justify-between"><span>Connessioni</span><span class="text-zinc-300">${escapeHtml(a.active_cons || '0')} / ${escapeHtml(a.max_connections || '?')}</span></div>
-    <div class="truncate text-zinc-500" title="${escapeHtml(a.normalized_server)}">${escapeHtml(a.normalized_server)}</div>`;
+    <div class="flex justify-between"><span>Connessioni</span><span class="text-ink tabular-nums">${escapeHtml(a.active_cons || '0')} / ${escapeHtml(a.max_connections || '?')}</span></div>
+    <div class="truncate text-ink-subtle" title="${escapeHtml(a.normalized_server)}">${escapeHtml(a.normalized_server)}</div>`;
   if (!ok) toast(`Stato account: ${status}`, 'error');
   else if (daysLeft <= 7) toast(daysLeft <= 0 ? 'L\'abbonamento risulta scaduto' : `L'abbonamento scade tra ${daysLeft} giorn${daysLeft === 1 ? 'o' : 'i'}`, 'error');
 }
@@ -139,10 +139,10 @@ function renderCaps() {
   if (c.ffmpeg) {
     el.textContent = `Codec extra: ffmpeg attivo · video ${c.h264_encoder || 'software'}`;
     el.title = `${c.version || 'ffmpeg'}\n${c.ffmpeg}`;
-    el.className = 'text-[11px] text-emerald-400/80 mb-2 truncate';
+    el.className = 'text-[11px] text-success mb-2 truncate';
   } else {
     el.textContent = 'Codec extra: ffmpeg non trovato (AC3/DTS/HEVC/MPEG-2 non convertibili)';
     el.title = 'Installa ffmpeg con: winget install Gyan.FFmpeg, poi riavvia l\'app';
-    el.className = 'text-[11px] text-amber-400/80 mb-2 truncate';
+    el.className = 'text-[11px] text-accent-ink mb-2 truncate';
   }
 }

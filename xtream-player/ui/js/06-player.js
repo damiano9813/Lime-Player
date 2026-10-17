@@ -220,7 +220,7 @@ function renderInfo(item, mode) {
   const type = $('info-type');
   type.classList.remove('hidden');
   type.textContent = mode === 'live' ? 'LIVE' : 'VOD';
-  type.className = 'text-[10px] font-bold tracking-wider rounded px-1.5 py-0.5 ' + (mode === 'live' ? 'bg-red-600 text-white' : 'bg-indigo-600 text-white');
+  type.className = 'badge shrink-0 ' + (mode === 'live' ? 'badge-live' : 'badge-film');
   const catName = S.catNames[mode].get(item.category_id) || '';
   const parts = [catName, item.num ? `N. ${item.num}` : '', mode === 'vod' && item.rating > 0 ? `★ ${Number(item.rating).toFixed(1)}` : ''].filter(Boolean);
   $('info-cat').textContent = parts.join(' · ');
@@ -245,7 +245,7 @@ function renderInfo(item, mode) {
 function updateFavButton() {
   const b = $('btn-fav');
   const fav = !!S.current && isFav(S.currentMode, S.current.stream_id);
-  b.innerHTML = `<span class="${fav ? 'text-amber-400' : ''}">${fav ? ICONS.star : ICONS.starO}</span>${fav ? 'Preferito' : 'Preferiti'}`;
+  b.innerHTML = `<span class="${fav ? 'text-accent' : ''}">${fav ? ICONS.star : ICONS.starO}</span>${fav ? 'Preferito' : 'Preferiti'}`;
   b.title = fav ? 'Rimuovi dai preferiti' : 'Aggiungi ai preferiti';
   b.setAttribute('aria-pressed', String(fav));
 }

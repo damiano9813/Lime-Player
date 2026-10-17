@@ -23,15 +23,15 @@ function rowHtml(it, idx, terms) {
     sub = isVirtualCat(S.selectedCat[S.mode]) ? (S.catNames[S.mode].get(it.category_id) || '') : '';
   }
   const lead = active ? `<span class="w-9 flex justify-end shrink-0">${ICONS.eq.replace('class="eq"', `class="eq${video.paused ? ' paused' : ''}"`)}</span>`
-    : `<span class="w-9 text-right text-[11px] tabular-nums text-zinc-600 shrink-0">${escapeHtml(it.num || idx + 1)}</span>`;
-  return `<div data-idx="${idx}" title="${escapeHtml(it.name)}" class="vrow absolute left-0 right-0 flex items-center gap-3 px-3 cursor-pointer hover:bg-zinc-900 ${active ? 'row-active' : ''}" style="top:${idx * ROW_H}px;height:${ROW_H}px">
+    : `<span class="w-7 text-right text-[11px] font-semibold tabular-nums text-ink-subtle shrink-0">${escapeHtml(it.num || idx + 1)}</span>`;
+  return `<div data-idx="${idx}" title="${escapeHtml(it.name)}" class="vrow absolute left-0 right-0 flex items-center gap-3 px-3 rounded-lg cursor-pointer transition-colors hover:bg-s2 ${active ? 'row-active' : ''}" style="top:${idx * ROW_H}px;height:${ROW_H}px">
     ${lead}
-    <div class="w-10 h-10 rounded-md bg-zinc-800/80 shrink-0 overflow-hidden flex items-center justify-center text-[11px] font-semibold text-zinc-400">${icon}</div>
+    <div class="logo-tile w-10 h-10 rounded-lg shrink-0 overflow-hidden flex items-center justify-center text-[11px] font-extrabold text-ink-muted">${icon}</div>
     <div class="flex-1 min-w-0">
-      <div class="text-sm truncate ${active ? 'text-indigo-200 font-medium' : 'text-zinc-200'}">${highlight(it.name, terms)}</div>
-      ${sub ? `<div class="text-[11px] text-zinc-500 truncate">${escapeHtml(sub)}</div>` : ''}
+      <div class="text-sm truncate ${active ? 'text-accent-ink font-bold' : 'text-ink font-medium'}">${highlight(it.name, terms)}</div>
+      ${sub ? `<div class="text-[11px] font-medium text-ink-subtle truncate">${escapeHtml(sub)}</div>` : ''}
     </div>
-    <button data-fav="${idx}" class="fav-btn p-1.5 rounded-md shrink-0 ${fav ? 'is-fav text-amber-400' : 'text-zinc-500 hover:text-zinc-200'}" title="${fav ? 'Rimuovi dai preferiti' : 'Aggiungi ai preferiti'}" aria-label="${fav ? 'Rimuovi dai preferiti' : 'Aggiungi ai preferiti'}">${fav ? ICONS.star : ICONS.starO}</button>
+    <button data-fav="${idx}" class="fav-btn p-1.5 rounded-md shrink-0 hover:bg-s3 ${fav ? 'is-fav text-accent' : 'text-ink-subtle hover:text-ink'}" title="${fav ? 'Rimuovi dai preferiti' : 'Aggiungi ai preferiti'}" aria-label="${fav ? 'Rimuovi dai preferiti' : 'Aggiungi ai preferiti'}">${fav ? ICONS.star : ICONS.starO}</button>
   </div>`;
 }
 

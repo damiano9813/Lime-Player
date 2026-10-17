@@ -6,7 +6,7 @@ function updateModeButtons() {
   document.querySelectorAll('.mode-btn').forEach((b) => {
     const active = b.dataset.mode === S.mode;
     b.className = 'mode-btn text-sm font-medium py-1.5 rounded-md transition ' +
-      (active ? 'bg-indigo-600 text-white shadow' : 'text-zinc-400 hover:text-white hover:bg-zinc-800');
+      (active ? 'bg-ink text-s1' : 'text-ink-muted hover:text-ink hover:bg-s3');
     b.setAttribute('aria-selected', String(active));
   });
   $('stream-search').placeholder = S.mode === 'vod' ? 'Cerca film' : 'Cerca canale';
@@ -31,7 +31,7 @@ async function switchMode(mode, force) {
 async function loadCategories(forceReload) {
   const mode = S.mode;
   if (S.categories[mode] && !forceReload) { renderCategories(); return; }
-  $('cat-list').innerHTML = '<div class="flex items-center gap-2 text-sm text-zinc-500 p-3"><svg class="w-4 h-4 spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M12 3a9 9 0 1 0 9 9" stroke-linecap="round"/></svg>Caricamento categorie…</div>';
+  $('cat-list').innerHTML = '<div class="flex items-center gap-2 text-sm text-ink-subtle p-3"><svg class="w-4 h-4 spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M12 3a9 9 0 1 0 9 9" stroke-linecap="round"/></svg>Caricamento categorie…</div>';
   try {
     const res = await invoke('get_categories', { ...S.creds, mode: MODE_API[mode].cats, cache: forceReload ? 'refresh' : 'prefer' });
     const cats = res.items;
@@ -53,19 +53,19 @@ function renderCategories() {
   const sel = S.selectedCat[mode];
   const item = (id, name, icon, count) => {
     const active = id === sel;
-    return `<button data-cat="${escapeHtml(id)}" ${active ? 'aria-current="true"' : ''} title="${escapeHtml(name)}" class="w-full text-left px-3 py-2 rounded-md text-sm transition flex items-center gap-2 ${active ? 'bg-indigo-600/20 text-indigo-200 font-medium' : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'}">${icon || ''}<span class="truncate flex-1">${escapeHtml(name)}</span>${count != null ? `<span class="text-[11px] tabular-nums ${active ? 'text-indigo-300/80' : 'text-zinc-500'}">${count}</span>` : ''}</button>`;
+    return `<button data-cat="${escapeHtml(id)}" ${active ? 'aria-current="true"' : ''} title="${escapeHtml(name)}" class="w-full h-9 text-left px-3 rounded-lg text-sm transition flex items-center gap-2.5 ${active ? 'bg-accent-soft text-accent-ink font-bold' : 'text-ink-muted font-medium hover:bg-s3 hover:text-ink'}">${icon || ''}<span class="truncate flex-1">${escapeHtml(name)}</span>${count != null ? `<span class="text-[11px] font-semibold tabular-nums ${active ? 'text-accent-ink' : 'text-ink-subtle'}">${count}</span>` : ''}</button>`;
   };
   let html = '';
   if (!q) {
-    html += item(ALL, MODE_API[mode].allLabel, `<span class="text-zinc-500">${ICONS.list}</span>`);
-    html += item(FAV, 'Preferiti', `<span class="text-amber-400">${ICONS.star}</span>`, S.favorites[mode].length);
-    html += item(RECENT, mode === 'vod' ? 'Visti di recente' : 'Recenti', `<span class="text-sky-400">${ICONS.clock}</span>`, S.recent[mode].length);
-    html += '<div class="h-px bg-zinc-800 my-2"></div>';
+    html += item(ALL, MODE_API[mode].allLabel, `<span class="text-ink-subtle">${ICONS.list}</span>`);
+    html += item(FAV, 'Preferiti', `<span class="text-accent">${ICONS.star}</span>`, S.favorites[mode].length);
+    html += item(RECENT, mode === 'vod' ? 'Visti di recente' : 'Recenti', `<span class="text-info">${ICONS.clock}</span>`, S.recent[mode].length);
+    html += '<div class="h-px bg-line my-2"></div>';
   }
   const visible = q ? cats.filter((c) => normKey(c.category_name).includes(q)) : cats;
   html += visible.map((c) => item(c.category_id, c.category_name)).join('');
-  if (!visible.length && q) html += '<p class="text-xs text-zinc-500 p-3">Nessuna categoria trovata.</p>';
-  if (!cats.length && !q) html += '<p class="text-xs text-zinc-500 p-3">Nessuna categoria disponibile.</p>';
+  if (!visible.length && q) html += '<p class="text-xs text-ink-subtle p-3">Nessuna categoria trovata.</p>';
+  if (!cats.length && !q) html += '<p class="text-xs text-ink-subtle p-3">Nessuna categoria disponibile.</p>';
   $('cat-list').innerHTML = html;
 }
 function revealSelectedCategory() {
@@ -223,13 +223,13 @@ function showListState(kind, msg, searchAll) {
   if (!kind) { el.classList.add('hidden'); el.innerHTML = ''; return; }
   el.classList.remove('hidden');
   if (kind === 'loading') {
-    el.innerHTML = '<svg class="w-8 h-8 text-indigo-400 spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 3a9 9 0 1 0 9 9" stroke-linecap="round"/></svg><span>Caricamento lista… (con molti elementi può richiedere qualche secondo)</span>';
+    el.innerHTML = '<svg class="w-8 h-8 text-accent spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 3a9 9 0 1 0 9 9" stroke-linecap="round"/></svg><span>Caricamento lista… (con molti elementi può richiedere qualche secondo)</span>';
   } else if (kind === 'error') {
-    el.innerHTML = `<svg class="w-8 h-8 text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v5M12 16h.01"/></svg><span class="text-red-300">${escapeHtml(msg)}</span><button id="list-retry" class="px-3 py-1.5 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-200">Riprova</button>`;
+    el.innerHTML = `<svg class="w-8 h-8 text-danger" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v5M12 16h.01"/></svg><span class="text-danger">${escapeHtml(msg)}</span><button id="list-retry" class="btn btn-secondary btn-sm">Riprova</button>`;
     $('list-retry').addEventListener('click', () => loadStreams(S.mode, S.selectedCat[S.mode], true));
   } else {
     el.innerHTML = `<span>${escapeHtml(msg)}</span>` +
-      (searchAll ? `<button id="list-search-all" class="px-3 py-1.5 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-200">Cerca in ${escapeHtml(MODE_API[S.mode].allLabel.toLowerCase())}</button>` : '');
+      (searchAll ? `<button id="list-search-all" class="btn btn-secondary btn-sm">Cerca in ${escapeHtml(MODE_API[S.mode].allLabel.toLowerCase())}</button>` : '');
     if (searchAll) $('list-search-all').addEventListener('click', () => selectCategory(ALL));
   }
 }
