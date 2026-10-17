@@ -150,10 +150,10 @@ aggiornata. Nelle Impostazioni, "Cerca aggiornamenti" ripete il controllo.
   installate non accettano aggiornamenti firmati con una chiave nuova (vanno reinstallate a mano).
 - **Pubblicare una versione con GitHub Actions**: aumenta `version` in `tauri.conf.json` e in
   `Cargo.toml`, poi `git tag v1.2.3` e `git push --tags`: il workflow
-  `.github/workflows/release.yml` (`tauri-apps/tauri-action`) esegue i test, compila, firma e crea
-  una release in bozza con installer, `.sig` e `latest.json`; pubblicala da GitHub. Segreti del
-  repository: `TAURI_SIGNING_PRIVATE_KEY` (contenuto del file `.key`) e
-  `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
+  `.github/workflows/release.yml` (`tauri-apps/tauri-action`) esegue i test, compila, firma e
+  pubblica subito la release con installer, `.sig` e `latest.json`: le app installate la vedono al
+  prossimo avvio. Segreto del repository: `TAURI_SIGNING_PRIVATE_KEY` (contenuto del file `.key`);
+  `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` solo se la chiave ha una password.
 - **A mano**: dopo `cargo tauri build` crea su GitHub la release `v1.2.3` e carica l'installer e un
   `latest.json` come questo (`signature` = testo del file `.sig`; nell'URL GitHub sostituisce gli
   spazi del nome file con punti):

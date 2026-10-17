@@ -58,7 +58,8 @@ jobs:
           tagName: v__VERSION__
           releaseName: Xtream Player v__VERSION__
           releaseBody: Installa con il file -setup.exe. Le versioni già installate si aggiornano da sole.
-          releaseDraft: true
+          # pubblicata subito: le app installate la vedono al prossimo avvio (i test sopra fanno da filtro)
+          releaseDraft: false
           prerelease: false
           uploadUpdaterJson: true
           updaterJsonPreferNsis: true
