@@ -5,7 +5,7 @@ Player IPTV desktop per Windows compatibile con le API Xtream Codes.
 ## Struttura
 
 ```
-xtream-player/
+Lime-Player/
 ├─ package.json                  script `npm test`, `npm run fetch:ffmpeg`
 ├─ scripts/fetch-ffmpeg.mjs      scarica ffmpeg/ffprobe LGPL (versione fissata, SHA-256)
 ├─ tests/core.test.js            test della logica pura del frontend (node --test)
@@ -48,7 +48,6 @@ globale; `core.js` non tocca DOM né Tauri e viene usato anche dai test.
 ## Test
 
 ```powershell
-cd xtream-player
 npm run fetch:ffmpeg   # una volta: tauri-build vuole i file di bundle.externalBin
 npm test
 cd src-tauri
@@ -63,7 +62,7 @@ voce di prova).
 tracce lette dalla PMT dei live vengono stampate su stdout (`[dev] tracce <sid>: ...`).
 
 ```powershell
-cd xtream-player\src-tauri
+cd src-tauri
 $env:XP_BENCH_PORT = "17999"; $env:XP_BENCH_SECS = "600"
 cargo test proxy_bench -- --ignored --nocapture
 ```
@@ -73,7 +72,7 @@ sviluppo stampa `[dev] proxy http://127.0.0.1:<porta>/ token <token>` (senza la 
 release, porta e token non compaiono mai).
 
 ```powershell
-cd xtream-player\src-tauri
+cd src-tauri
 $env:XP_DEBUG_PROXY = "1"
 cargo tauri dev
 ```
@@ -108,7 +107,6 @@ Riapri il terminale dopo l'installazione per aggiornare il PATH.
 ## Avvio
 
 ```powershell
-cd xtream-player
 npm install
 cd src-tauri
 cargo tauri dev
@@ -125,7 +123,7 @@ Con `createUpdaterArtifacts` la build firma l'installer per l'aggiornamento auto
 chiave privata (vedi "Aggiornamenti").
 
 ```powershell
-cd xtream-player\src-tauri
+cd src-tauri
 $env:TAURI_SIGNING_PRIVATE_KEY = Get-Content -Raw "$env:USERPROFILE\.tauri\xtream-player.key"
 $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = ""   # la password scelta alla generazione
 cargo tauri build

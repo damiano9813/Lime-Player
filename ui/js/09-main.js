@@ -144,7 +144,7 @@ async function init() {
     return;
   }
   if (!window.mpegts || !window.Hls) {
-    toast('Librerie video mancanti: esegui "npm run build:ui" nella cartella xtream-player.', 'error');
+    toast('Librerie video mancanti: esegui "npm run build:ui" nella cartella del progetto.', 'error');
   }
   try { S.proxy = await invoke('get_proxy_info'); } catch (e) { toast('Proxy locale non disponibile: ' + errText(e), 'error'); }
   // la rilevazione di ffmpeg/encoder prova davvero la GPU: non blocca il login

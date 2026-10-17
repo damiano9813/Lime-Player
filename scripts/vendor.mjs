@@ -20,7 +20,7 @@ const files = [
 for (const [src, dst] of files) {
   const from = path.join(root, src);
   if (!fs.existsSync(from)) {
-    console.error(`Manca ${src}: esegui "npm install" nella cartella xtream-player.`);
+    console.error(`Manca ${src}: esegui "npm install" nella cartella del progetto.`);
     process.exit(1);
   }
   fs.copyFileSync(from, path.join(out, dst));

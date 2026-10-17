@@ -1,5 +1,5 @@
 # Release firmata per l'aggiornamento automatico: si avvia con un tag "v1.2.3" (uguale a
-# "version" in xtream-player/src-tauri/tauri.conf.json) o a mano da Actions.
+# "version" in src-tauri/tauri.conf.json) o a mano da Actions.
 # Segreti del repository: TAURI_SIGNING_PRIVATE_KEY (contenuto del file .key) e
 # TAURI_SIGNING_PRIVATE_KEY_PASSWORD (vuoto se la chiave non ha password).
 name: Release
@@ -22,29 +22,26 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: xtream-player/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: swatinem/rust-cache@v2
         with:
-          workspaces: xtream-player/src-tauri -> target
+          workspaces: src-tauri -> target
 
       - name: Dipendenze frontend
-        working-directory: xtream-player
         run: npm ci
 
       # passi separati: in pwsh conta solo il codice d'uscita dell'ultimo comando
       - name: Test frontend
-        working-directory: xtream-player
         run: npm test
 
       - name: ffmpeg per il bundle
-        working-directory: xtream-player
         run: npm run fetch:ffmpeg
 
       - name: Test Rust
-        working-directory: xtream-player/src-tauri
+        working-directory: src-tauri
         run: cargo test
 
       # beforeBuildCommand scarica ffmpeg (già presente dal passo precedente) e compila la UI
@@ -54,7 +51,6 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          projectPath: xtream-player
           tagName: v__VERSION__
           releaseName: Xtream Player v__VERSION__
           releaseBody: Installa con il file -setup.exe. Le versioni già installate si aggiornano da sole.
