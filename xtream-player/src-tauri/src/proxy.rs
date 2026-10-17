@@ -16,7 +16,8 @@ use reqwest::Url;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
-use crate::transcode::handle_transcode;
+use crate::transcode::{handle_transcode, open_upstream};
+use crate::ts::pump_live;
 use crate::util::{describe_reqwest_error, CORS_HEADERS};
 
 pub struct ProxyCtx {
@@ -187,6 +188,25 @@ pub async fn handle_conn(mut sock: TcpStream, ctx: Arc<ProxyCtx>) -> io::Result<
     };
     if is_transcode {
         return handle_transcode(sock, &method, target_url, &params, &ctx.client).await;
+    }
+
+    // live MPEG-TS diretto (&live=1): tentativi sul limite connessioni e salto della raffica
+    // iniziale, così il player riceve subito il bordo live invece di 20-30 s di video vecchio
+    if method == "GET" && params.get("live").map(|s| s == "1").unwrap_or(false) {
+        let resp = match open_upstream(&ctx.client, &target_url).await {
+            Ok(r) => r,
+            Err(e) => return write_simple(&mut sock, 502, "Bad Gateway", &e).await,
+        };
+        let ct = header_str(resp.headers(), &CONTENT_TYPE);
+        let head = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: {}\r\n{}Cache-Control: no-store\r\nConnection: close\r\n\r\n",
+            if ct.is_empty() { "video/mp2t" } else { ct.as_str() },
+            CORS_HEADERS
+        );
+        sock.write_all(head.as_bytes()).await?;
+        pump_live(resp, &mut sock, None).await;
+        let _ = sock.shutdown().await;
+        return Ok(());
     }
 
     let mut req = if method == "HEAD" {

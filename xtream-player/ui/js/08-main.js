@@ -54,6 +54,10 @@ document.addEventListener('keydown', (ev) => {
     case 'r': case 'R': if (S.current) { ev.preventDefault(); playItem(S.current, S.currentMode); } break;
     case '+': case '=': ev.preventDefault(); changeVolume(0.05); break;
     case '-': case '_': ev.preventDefault(); changeVolume(-0.05); break;
+    case 'Backspace':
+      // come il tasto "indietro" del telecomando: alterna tra gli ultimi due contenuti
+      if (S.previous) { ev.preventDefault(); const p = S.previous; playItem(p.item, p.mode); locateCurrent(false); }
+      break;
     case 'ArrowDown': ev.preventDefault(); stepChannel(1); break;
     case 'ArrowUp': ev.preventDefault(); stepChannel(-1); break;
     case 'ArrowRight': if (S.currentMode === 'vod') { ev.preventDefault(); seekBy(10); } break;
@@ -84,11 +88,13 @@ async function init() {
     return;
   }
   if (!window.mpegts || !window.Hls) {
-    toast('Librerie video non caricate dal CDN: controlla la connessione a Internet.', 'error');
+    toast('Librerie video mancanti: esegui "npm run build:ui" nella cartella xtream-player.', 'error');
   }
   try { S.proxy = await invoke('get_proxy_info'); } catch (e) { toast('Proxy locale non disponibile: ' + errText(e), 'error'); }
   // la rilevazione di ffmpeg/encoder prova davvero la GPU: non blocca il login
   invoke('get_media_capabilities').then((c) => { S.caps = c; renderCaps(); }).catch(() => { renderCaps(); });
+  // liste salvate su disco riscaricate in background dal backend
+  if (TAURI.event) TAURI.event.listen('list-updated', (e) => onListUpdated(e.payload)).catch(() => {});
 
   let saved = lsGet(CREDS_KEY, null);
   if (!saved || !saved.server) {

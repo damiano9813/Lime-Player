@@ -4,7 +4,9 @@
   "version": "1.0.0",
   "identifier": "com.xtreamplayer.desktop",
   "build": {
-    "frontendDist": "../ui"
+    "frontendDist": "../ui",
+    "beforeDevCommand": { "script": "npm run build:ui", "wait": true },
+    "beforeBuildCommand": "npm run build:ui"
   },
   "app": {
     "withGlobalTauri": true,

@@ -33,7 +33,8 @@ async function loadCategories(forceReload) {
   if (S.categories[mode] && !forceReload) { renderCategories(); return; }
   $('cat-list').innerHTML = '<div class="flex items-center gap-2 text-sm text-zinc-500 p-3"><svg class="w-4 h-4 spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M12 3a9 9 0 1 0 9 9" stroke-linecap="round"/></svg>Caricamento categorie…</div>';
   try {
-    const cats = await invoke('get_categories', { ...S.creds, mode: MODE_API[mode].cats });
+    const res = await invoke('get_categories', { ...S.creds, mode: MODE_API[mode].cats, cache: forceReload ? 'refresh' : 'prefer' });
+    const cats = res.items;
     S.categories[mode] = cats;
     const map = new Map();
     cats.forEach((c) => map.set(c.category_id, c.category_name));
@@ -122,9 +123,13 @@ async function loadStreams(mode, catId, forceReload) {
       renderList(true);
       showListState('loading');
       try {
-        const res = await invoke('get_streams', { ...S.creds, mode: MODE_API[mode].streams, categoryId: catId === ALL ? '' : catId });
-        items = prepareItems(res);
+        // con "prefer" la lista salvata su disco arriva subito; quella aggiornata con l'evento list-updated
+        const res = await invoke('get_streams', {
+          ...S.creds, mode: MODE_API[mode].streams, categoryId: catId === ALL ? '' : catId, cache: forceReload ? 'refresh' : 'prefer',
+        });
+        items = prepareItems(res.items);
         S.cache.set(key, items);
+        S.listAge.set(key, res.fetched_at);
       } catch (e) {
         if (seq !== S.loadSeq) return;
         showListState('error', errText(e));
@@ -136,6 +141,42 @@ async function loadStreams(mode, catId, forceReload) {
   S.list = items;
   applyFilter(true);
   locateCurrent(false);
+  setListAge(S.listAge.get(mode + '|' + catId));
+}
+
+function setListAge(fetchedAt) {
+  $('list-count').title = fetchedAt ? 'Lista aggiornata il ' + new Date(fetchedAt * 1000).toLocaleString('it-IT') : '';
+}
+
+// La lista salvata su disco è stata riscaricata in background (evento "list-updated"):
+// si sostituisce senza perdere scroll, ricerca e contenuto in riproduzione.
+function onListUpdated(p) {
+  if (!S.creds || !p) return;
+  const mode = Object.keys(MODE_API).find((m) => MODE_API[m].streams === p.action || MODE_API[m].cats === p.action);
+  if (!mode) return;
+  if (MODE_API[mode].cats === p.action) {
+    S.categories[mode] = p.items;
+    S.catNames[mode] = new Map(p.items.map((c) => [c.category_id, c.category_name]));
+    if (S.mode === mode) renderCategories();
+    return;
+  }
+  const catId = p.category_id || ALL;
+  const key = mode + '|' + catId;
+  // le sottoliste ricavate in memoria da "tutti" vanno ricalcolate
+  if (catId === ALL) for (const k of Array.from(S.cache.keys())) if (k.startsWith(mode + '|') && k !== key) S.cache.delete(k);
+  const items = prepareItems(p.items);
+  S.cache.set(key, items);
+  S.listAge.set(key, p.fetched_at);
+  const sel = S.selectedCat[mode];
+  if (S.mode !== mode || (isVirtualCat(sel) && sel !== ALL)) return;
+  if (sel !== catId && catId !== ALL) return;
+  const list = sel === catId ? items : items.filter((s) => s.category_id === sel);
+  if (sel !== catId) S.cache.set(mode + '|' + sel, list);
+  const before = S.list.length;
+  S.list = list;
+  applyFilter(false);
+  setListAge(p.fetched_at);
+  if (list.length !== before) toast(`Lista aggiornata: ${list.length.toLocaleString('it-IT')} ${MODE_API[mode].unit}`);
 }
 
 function searchTerms() { return normKey(S.search).split(/\s+/).filter(Boolean); }

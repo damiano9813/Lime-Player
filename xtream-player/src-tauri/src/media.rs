@@ -375,6 +375,15 @@ mod tests {
     }
 
     #[test]
+    fn live_audio_only_from_pipe_copies_video() {
+        let a = build_ffmpeg_args("pipe:0", "copy", "aac", true, 0.0, "h264_nvenc", true);
+        assert_eq!(a[pos(&a, "-c:v").unwrap() + 1], "copy");
+        assert!(!a.iter().any(|x| x.starts_with("bwdif=")), "niente filtri con il video copiato");
+        assert!(pos(&a, "h264_nvenc").is_none());
+        assert!(pos(&a, "-user_agent").is_none());
+    }
+
+    #[test]
     fn live_audio_only_from_url() {
         let a = build_ffmpeg_args("http://h/live/1.ts", "copy", "aac", true, 0.0, "libx264", false);
         assert!(pos(&a, "-user_agent").unwrap() < pos(&a, "-i").unwrap());

@@ -1,6 +1,7 @@
 // Nasconde la console in release su Windows.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod cache;
 mod creds;
 mod external;
 mod media;
@@ -62,7 +63,8 @@ fn main() {
             creds::clear_credentials,
             external::open_in_external_player,
             media::get_media_capabilities,
-            media::probe_stream
+            media::probe_stream,
+            cache::clear_list_cache
         ])
         .run(tauri::generate_context!())
         .expect("errore durante l'avvio dell'applicazione");

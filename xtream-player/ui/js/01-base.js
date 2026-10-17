@@ -58,6 +58,7 @@ $('modal').addEventListener('click', (ev) => { if (ev.target === $('modal')) clo
 
 const SHORTCUTS = [
   [['Spazio'], 'Play / pausa'], [['↑', '↓'], 'Canale o film precedente / successivo'], [['0–9'], 'Vai al canale con quel numero'],
+  [['⌫'], 'Torna all\'ultimo contenuto visto'],
   [['←', '→'], 'Indietro / avanti 10 s (film)'], [['+', '−'], 'Volume (anche rotella sul player)'], [['M'], 'Muto'],
   [['F'], 'Schermo intero'], [['T'], 'Modalità cinema'], [['P'], 'Picture in Picture'], [['R'], 'Ricarica stream'],
   [['/'], 'Cerca nella lista'], [['Esc'], 'Svuota la ricerca / chiudi'], [['?'], 'Mostra questo elenco'],

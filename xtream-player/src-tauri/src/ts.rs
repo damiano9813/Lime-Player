@@ -1,6 +1,52 @@
 //! Analisi minima di MPEG-TS (sync, PCR) e salto della raffica iniziale dei server.
 
-use std::time::Instant;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
+
+use futures_util::StreamExt;
+use tokio::io::{AsyncWrite, AsyncWriteExt};
+
+/// Inoltra uno stream live a `out` (ffmpeg o il player) saltando la raffica iniziale.
+/// Termina a fine flusso, su errore di scrittura (destinazione chiusa) o quando `stop`
+/// diventa vero.
+pub async fn pump_live<W: AsyncWrite + Unpin>(resp: reqwest::Response, out: &mut W, stop: Option<&AtomicBool>) {
+    let mut body = resp.bytes_stream();
+    let mut skipper = BurstSkipper::new();
+    loop {
+        if stop.map(|s| s.load(Ordering::Relaxed)).unwrap_or(false) {
+            break;
+        }
+        let next = match tokio::time::timeout(Duration::from_millis(150), body.next()).await {
+            Ok(n) => n,
+            Err(_) => {
+                // nessun dato per 150 ms: si rivaluta se la raffica è finita
+                if !skipper.done && skipper.start.is_some() {
+                    if let Some(data) = skipper.push(&[]) {
+                        if out.write_all(&data).await.is_err() {
+                            break;
+                        }
+                    }
+                }
+                continue;
+            }
+        };
+        let bytes = match next {
+            Some(Ok(b)) => b,
+            _ => break,
+        };
+        let ok = if skipper.done {
+            out.write_all(&bytes).await.is_ok()
+        } else {
+            match skipper.push(&bytes) {
+                Some(data) => out.write_all(&data).await.is_ok(),
+                None => true,
+            }
+        };
+        if !ok {
+            break;
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Raffica iniziale: alla connessione molti server Xtream inviano in ~1 s il proprio

@@ -4,3 +4,4 @@ xtream-player/src-tauri/gen/
 xtream-player/src-tauri/binaries/
 # dipendenze frontend
 node_modules/
+xtream-player/ui/vendor/

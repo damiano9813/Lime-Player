@@ -7,8 +7,9 @@ use reqwest::Url;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
-use tauri::State;
+use tauri::{AppHandle, State};
 
+use crate::cache::{load_list, CacheKey, Listing};
 use crate::state::AppState;
 use crate::util::{describe_reqwest_error, preview, USER_AGENT};
 
@@ -301,28 +302,43 @@ pub async fn xtream_login(
     })
 }
 
+/// `cache`: "prefer" (predefinito) mostra la lista salvata e la aggiorna in background,
+/// "refresh" scarica sempre dal server.
 #[tauri::command]
 pub async fn get_categories(
+    app: AppHandle,
     state: State<'_, AppState>,
     server: String,
     username: String,
     password: String,
     mode: String,
-) -> Result<Vec<Category>, String> {
+    cache: Option<String>,
+) -> Result<Listing<Category>, String> {
     if !matches!(
         mode.as_str(),
         "get_live_categories" | "get_vod_categories" | "get_series_categories"
     ) {
         return Err(format!("Modalità categorie non supportata: {}", mode));
     }
-    let v = api_get(
-        &state.client,
-        &server,
-        &username,
-        &password,
-        &[("action", mode.as_str())],
-    )
-    .await?;
+    let server = normalize_server(&server)?;
+    let key = CacheKey { server: server.clone(), username: username.clone(), action: mode.clone(), category: String::new() };
+    let client = state.client.clone();
+    load_list(app, key, cache.as_deref().unwrap_or("prefer"), move || {
+        let (client, server, username, password, mode) =
+            (client.clone(), server.clone(), username.clone(), password.clone(), mode.clone());
+        async move { fetch_categories(&client, &server, &username, &password, &mode).await }
+    })
+    .await
+}
+
+async fn fetch_categories(
+    client: &reqwest::Client,
+    server: &str,
+    username: &str,
+    password: &str,
+    mode: &str,
+) -> Result<Vec<Category>, String> {
+    let v = api_get(client, server, username, password, &[("action", mode)]).await?;
     let mut list: Vec<Category> = parse_list::<Category>(v)
         .into_iter()
         .filter(|c| !c.category_id.is_empty())
@@ -336,23 +352,46 @@ pub async fn get_categories(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn get_streams(
+    app: AppHandle,
     state: State<'_, AppState>,
     server: String,
     username: String,
     password: String,
     mode: String,
     category_id: String,
-) -> Result<Vec<StreamItem>, String> {
+    cache: Option<String>,
+) -> Result<Listing<StreamItem>, String> {
     if !matches!(mode.as_str(), "get_live_streams" | "get_vod_streams") {
         return Err(format!("Modalità stream non supportata: {}", mode));
     }
+    let server = normalize_server(&server)?;
     let cat = category_id.trim().to_string();
-    let mut extra: Vec<(&str, &str)> = vec![("action", mode.as_str())];
-    if !cat.is_empty() && cat != "all" && cat != "*" {
-        extra.push(("category_id", cat.as_str()));
+    let cat = if cat == "all" || cat == "*" { String::new() } else { cat };
+    let key = CacheKey { server: server.clone(), username: username.clone(), action: mode.clone(), category: cat.clone() };
+    let client = state.client.clone();
+    load_list(app, key, cache.as_deref().unwrap_or("prefer"), move || {
+        let (client, server, username, password, mode, cat) =
+            (client.clone(), server.clone(), username.clone(), password.clone(), mode.clone(), cat.clone());
+        async move { fetch_streams(&client, &server, &username, &password, &mode, &cat).await }
+    })
+    .await
+}
+
+async fn fetch_streams(
+    client: &reqwest::Client,
+    server: &str,
+    username: &str,
+    password: &str,
+    mode: &str,
+    cat: &str,
+) -> Result<Vec<StreamItem>, String> {
+    let mut extra: Vec<(&str, &str)> = vec![("action", mode)];
+    if !cat.is_empty() {
+        extra.push(("category_id", cat));
     }
-    let v = api_get(&state.client, &server, &username, &password, &extra).await?;
+    let v = api_get(client, server, username, password, &extra).await?;
     let mut list: Vec<StreamItem> = parse_list::<StreamItem>(v)
         .into_iter()
         .filter(|s| !s.stream_id.is_empty())

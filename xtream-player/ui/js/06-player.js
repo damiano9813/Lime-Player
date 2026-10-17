@@ -12,7 +12,7 @@ const P = {
 S.caps = { ffmpeg: null, ffprobe: null, h264_encoder: null, version: '' };
 
 function buildStreamUrl(item, mode, fmt) { return XPCore.buildStreamUrl(S.creds, item, mode, fmt); }
-function proxied(url) { return XPCore.proxyUrl(S.proxy, url); }
+function proxied(url, opts) { return XPCore.proxyUrl(S.proxy, url, opts); }
 function transcodeUrl(url, r, opts) { return XPCore.transcodeUrl(S.proxy, url, r, opts); }
 
 // --- supporto codec di WebView2 (MSE) ---
@@ -276,6 +276,10 @@ function playItem(item, mode, opts) {
   destroyPlayer();
   hideError();
   setHint('');
+  // per il tasto "canale precedente": si ricorda l'ultimo contenuto diverso da quello nuovo
+  if (!opts.keepRetries && S.current && (S.current.stream_id !== item.stream_id || S.currentMode !== mode)) {
+    S.previous = { item: S.current, mode: S.currentMode };
+  }
   S.current = item;
   S.currentMode = mode;
   if (!opts.keepRetries) P.retries = 0;
@@ -320,7 +324,7 @@ function startLive(item, fmt, forcedRoute) {
     startMpegts(transcodeUrl(tsUrl, route, { live: true }), true, item, 'live');
   } else {
     setStatus('Connessione allo stream…');
-    startMpegts(proxied(tsUrl), true, item, 'live');
+    startMpegts(proxied(tsUrl, { live: true }), true, item, 'live');
   }
   updateTech();
   startWatchdog();

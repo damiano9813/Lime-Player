@@ -50,6 +50,10 @@ test('URL del proxy locale', () => {
   assert.equal(p.host, '127.0.0.1:5555');
   assert.equal(p.pathname, '/p/tok');
   assert.equal(p.searchParams.get('u'), src);
+  assert.equal(p.searchParams.get('live'), null);
+  const pl = new URL(X.proxyUrl(proxy, src, { live: true }));
+  assert.equal(pl.searchParams.get('u'), src, 'il parametro live non altera l\'URL originale');
+  assert.equal(pl.searchParams.get('live'), '1');
 
   const t = new URL(X.transcodeUrl(proxy, src, { v: 'h264', a: 'aac' }, { live: false, ss: 125.9 }));
   assert.equal(t.pathname, '/t/tok');

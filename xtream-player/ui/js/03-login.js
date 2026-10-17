@@ -81,6 +81,10 @@ async function logout() {
   resetPlayerUi();
   lsDel(CREDS_KEY);
   await invoke('clear_credentials').catch(() => {});
+  // le liste salvate appartengono all'account: si cancellano con le credenziali
+  await invoke('clear_list_cache').catch(() => {});
+  S.listAge.clear();
+  S.previous = null;
   S.creds = null; S.account = null; S.cache.clear();
   S.categories = { live: null, vod: null };
   S.catNames = { live: new Map(), vod: new Map() };

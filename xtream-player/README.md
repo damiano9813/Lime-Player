@@ -9,7 +9,8 @@ xtream-player/
 ├─ package.json                  script `npm test`
 ├─ tests/core.test.js            test della logica pura del frontend (node --test)
 ├─ ui/
-│  ├─ index.html                 markup e stili (Tailwind CDN, mpegts.js, hls.js)
+│  ├─ index.html                 markup e stili
+│  ├─ vendor/                    generata: app.css (Tailwind), mpegts.js, hls.js
 │  └─ js/
 │     ├─ core.js                 logica pura testabile: codec, percorsi, URL, buffer adattivo
 │     ├─ 01-base.js              utilità, toast, modale, scorciatoie, icone
@@ -74,11 +75,16 @@ Riapri il terminale dopo l'installazione per aggiornare il PATH.
 ## Avvio
 
 ```powershell
-cd xtream-player\src-tauri
+cd xtream-player
+npm install
+cd src-tauri
 cargo tauri dev
 ```
 
-La prima compilazione scarica e compila le dipendenze (alcuni minuti).
+`npm install` serve una volta sola (e dopo ogni cambio di `package.json`). Prima di ogni
+avvio e build Tauri esegue `npm run build:ui`, che copia mpegts.js e hls.js in `ui/vendor/`
+e compila Tailwind in `ui/vendor/app.css`: l'app non dipende più da CDN.
+La prima compilazione scarica e compila le dipendenze Rust (alcuni minuti).
 
 ## Build dell'installer
 
@@ -98,4 +104,11 @@ Output: `src-tauri\target\release\xtream-player.exe` e l'installer NSIS in `src-
 - Prima di aprire il player esterno lo stream interno viene chiuso, per non superare il limite di connessioni dell'account.
 - **Credenziali**: salvate in chiaro in `localStorage` e in `%APPDATA%\com.xtreamplayer.desktop\credentials.json`. "Esci e dimentica credenziali" le cancella entrambe.
 - I certificati HTTPS non validi vengono accettati, perché molti provider IPTV usano certificati self-signed.
-- Le librerie JS vengono caricate da CDN con versioni fissate: serve una connessione a Internet all'avvio.
+- Librerie e CSS sono locali (`ui/vendor/`, versioni fissate in `package.json`): niente CDN.
+- **Cache delle liste**: categorie e liste vengono salvate in `%LOCALAPPDATA%\com.xtreamplayer.desktop\lists\`.
+  All'avvio si mostrano subito quelle salvate (se hanno meno di 24 ore) e si aggiornano in
+  background se hanno più di 10 minuti; senza rete si usa comunque l'ultima lista. Il pulsante
+  di aggiornamento scarica sempre dal server; "Esci" cancella anche la cache.
+- **Raffica iniziale**: su tutti i percorsi live il proxy salta i 20-30 s di video vecchio che
+  molti server inviano alla connessione e passa al player (o a ffmpeg) solo il bordo live.
+- Tasto **Backspace**: torna all'ultimo contenuto visto.

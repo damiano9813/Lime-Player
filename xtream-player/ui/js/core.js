@@ -55,9 +55,10 @@
     const ext = (item.container_extension || 'mp4').replace(/^\./, '');
     return `${c.server}/movie/${enc(c.username)}/${enc(c.password)}/${item.stream_id}.${ext}`;
   }
-  function proxyUrl(proxy, url) {
+  // `opts.live`: flusso live MPEG-TS, il proxy salta la raffica iniziale del server
+  function proxyUrl(proxy, url, opts) {
     if (!proxy) return url;
-    return `http://127.0.0.1:${proxy.port}/p/${proxy.token}?u=${encodeURIComponent(url)}`;
+    return `http://127.0.0.1:${proxy.port}/p/${proxy.token}?u=${encodeURIComponent(url)}${opts && opts.live ? '&live=1' : ''}`;
   }
   function transcodeUrl(proxy, url, r, opts) {
     const q = new URLSearchParams({ u: url, v: r.v, a: r.a, live: opts.live ? '1' : '0', ss: String(Math.max(0, Math.floor(opts.ss || 0))) });

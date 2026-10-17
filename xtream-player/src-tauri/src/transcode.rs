@@ -6,7 +6,6 @@ use std::process::Stdio;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use futures_util::StreamExt;
 use reqwest::header::ACCEPT;
 use reqwest::Url;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -14,53 +13,25 @@ use tokio::net::TcpStream;
 
 use crate::media::{build_ffmpeg_args, media_tools, tokio_cmd};
 use crate::proxy::write_simple;
-use crate::ts::BurstSkipper;
+use crate::ts::pump_live;
 use crate::util::{describe_reqwest_error, preview, CORS_HEADERS};
 
-pub async fn feed_ffmpeg(
-    resp: reqwest::Response,
-    mut stdin: tokio::process::ChildStdin,
-    stop: Arc<std::sync::atomic::AtomicBool>,
-) {
-    let mut body = resp.bytes_stream();
-    let mut skipper = BurstSkipper::new();
-    loop {
-        if stop.load(std::sync::atomic::Ordering::Relaxed) {
-            break;
+/// Apre lo stream del provider. Dopo un cambio canale il provider può contare ancora la
+/// connessione precedente (limite connessioni dell'account): qualche tentativo ravvicinato
+/// prima di arrendersi.
+pub async fn open_upstream(client: &reqwest::Client, target: &Url) -> Result<reqwest::Response, String> {
+    let mut last_err = String::new();
+    for attempt in 0..4u64 {
+        if attempt > 0 {
+            tokio::time::sleep(Duration::from_millis(600 * attempt)).await;
         }
-        let next = {
-            match tokio::time::timeout(Duration::from_millis(150), body.next()).await {
-                Ok(n) => n,
-                Err(_) => {
-                    // nessun dato per 150 ms: si rivaluta se la raffica è finita
-                    if !skipper.done && skipper.start.is_some() {
-                        if let Some(out) = skipper.push(&[]) {
-                            if stdin.write_all(&out).await.is_err() {
-                                break;
-                            }
-                        }
-                    }
-                    continue;
-                }
-            }
-        };
-        let bytes = match next {
-            Some(Ok(b)) => b,
-            _ => break,
-        };
-        let ok = if skipper.done {
-            stdin.write_all(&bytes).await.is_ok()
-        } else {
-            match skipper.push(&bytes) {
-                Some(out) => stdin.write_all(&out).await.is_ok(),
-                None => true,
-            }
-        };
-        if !ok {
-            break;
+        match client.get(target.clone()).header(ACCEPT, "*/*").send().await {
+            Ok(r) if r.status().is_success() => return Ok(r),
+            Ok(r) => last_err = format!("Il provider ha risposto HTTP {}", r.status().as_u16()),
+            Err(e) => last_err = describe_reqwest_error(e),
         }
     }
-    let _ = stdin.shutdown().await;
+    Err(last_err)
 }
 
 pub async fn handle_transcode(
@@ -101,28 +72,13 @@ pub async fn handle_transcode(
         .filter(|x| x.is_finite() && *x >= 0.0)
         .unwrap_or(0.0);
     let encoder = tools.encoder.clone().unwrap_or_else(|| "libx264".to_string());
-    // live con video da convertire: il proxy legge il flusso e salta la raffica iniziale
-    let from_pipe = live && v == "h264";
+    // live: il proxy legge il flusso, salta la raffica iniziale e passa a ffmpeg solo il bordo live
+    let from_pipe = live;
     let mut upstream: Option<reqwest::Response> = None;
     if from_pipe {
-        // dopo un cambio canale il provider può contare ancora la connessione precedente
-        // (limite connessioni dell'account): qualche tentativo ravvicinato prima di arrendersi
-        let mut last_err = String::new();
-        for attempt in 0..4u64 {
-            if attempt > 0 {
-                tokio::time::sleep(Duration::from_millis(600 * attempt)).await;
-            }
-            match client.get(target.clone()).header(ACCEPT, "*/*").send().await {
-                Ok(r) if r.status().is_success() => {
-                    upstream = Some(r);
-                    break;
-                }
-                Ok(r) => last_err = format!("Il provider ha risposto HTTP {}", r.status().as_u16()),
-                Err(e) => last_err = describe_reqwest_error(e),
-            }
-        }
-        if upstream.is_none() {
-            return write_simple(&mut sock, 502, "Bad Gateway", &last_err).await;
+        match open_upstream(client, &target).await {
+            Ok(r) => upstream = Some(r),
+            Err(e) => return write_simple(&mut sock, 502, "Bad Gateway", &e).await,
         }
     }
     let input = if from_pipe { "pipe:0" } else { target.as_str() };
@@ -148,8 +104,11 @@ pub async fn handle_transcode(
         }
     }
     let _stop_guard = StopOnDrop(stop.clone());
-    if let (Some(resp), Some(stdin)) = (upstream, child.stdin.take()) {
-        tokio::spawn(feed_ffmpeg(resp, stdin, stop));
+    if let (Some(resp), Some(mut stdin)) = (upstream, child.stdin.take()) {
+        tokio::spawn(async move {
+            pump_live(resp, &mut stdin, Some(stop.as_ref())).await;
+            let _ = stdin.shutdown().await;
+        });
     }
     let mut stdout = match child.stdout.take() {
         Some(s) => s,
