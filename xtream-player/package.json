@@ -1,6 +1,6 @@
 {
   "name": "xtream-player",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Player IPTV desktop compatibile con le API Xtream Codes (Tauri v2)",
   "scripts": {

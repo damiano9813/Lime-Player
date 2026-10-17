@@ -34,16 +34,21 @@ jobs:
         working-directory: xtream-player
         run: npm ci
 
-      - name: Test
+      # passi separati: in pwsh conta solo il codice d'uscita dell'ultimo comando
+      - name: Test frontend
         working-directory: xtream-player
-        run: |
-          npm test
-          npm run fetch:ffmpeg
-          cd src-tauri
-          cargo test
+        run: npm test
+
+      - name: ffmpeg per il bundle
+        working-directory: xtream-player
+        run: npm run fetch:ffmpeg
+
+      - name: Test Rust
+        working-directory: xtream-player/src-tauri
+        run: cargo test
 
       # beforeBuildCommand scarica ffmpeg (già presente dal passo precedente) e compila la UI
-      - uses: tauri-apps/tauri-action@v0
+      - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -55,4 +60,5 @@ jobs:
           releaseBody: Installa con il file -setup.exe. Le versioni già installate si aggiornano da sole.
           releaseDraft: true
           prerelease: false
-          includeUpdaterJson: true
+          uploadUpdaterJson: true
+          updaterJsonPreferNsis: true
