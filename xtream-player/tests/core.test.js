@@ -42,6 +42,50 @@ test('URL degli stream con credenziali codificate', () => {
   assert.equal(X.buildStreamUrl(creds, { stream_id: '5' }, 'vod'), 'http://h:8080/movie/mario%40x/p%23ss%2F1/5.mp4');
 });
 
+test('URL degli episodi e del catch-up', () => {
+  const creds = { server: 'http://h:8080', username: 'u', password: 'p@1' };
+  assert.equal(X.buildStreamUrl(creds, { stream_id: '2139117', container_extension: 'mkv' }, 'series'), 'http://h:8080/series/u/p%401/2139117.mkv');
+  assert.equal(X.timeshiftStart('2026-10-17 14:10:00'), '2026-10-17:14-10');
+  assert.equal(X.timeshiftStart('2026-10-17T09:05:00'), '2026-10-17:09-05');
+  assert.equal(X.timeshiftStart('ieri'), '');
+  assert.equal(X.timeshiftUrl(creds, '497001', '2026-10-17 14:10:00', 4.2), 'http://h:8080/timeshift/u/p%401/5/2026-10-17:14-10/497001.ts');
+});
+
+test('guida TV: in onda, successivo, avanzamento, archivio', () => {
+  const e = [
+    { title: 'C', start_ts: 300, end_ts: 400 },
+    { title: 'A', start_ts: 100, end_ts: 200 },
+    { title: 'B', start_ts: 200, end_ts: 300 },
+  ];
+  assert.deepEqual(X.currentAndNext(e, 250), { now: e[2], next: e[0] });
+  assert.deepEqual(X.currentAndNext(e, 50), { now: null, next: e[1] }, 'prima dell\'inizio');
+  assert.deepEqual(X.currentAndNext(e, 500), { now: null, next: null });
+  assert.deepEqual(X.currentAndNext([], 1), { now: null, next: null });
+  assert.equal(X.epgProgress(e[2], 250), 0.5);
+  assert.equal(X.epgProgress(e[2], 999), 1);
+  assert.equal(X.epgProgress(null, 1), 0);
+  const day = 86400, now = 10 * day;
+  const arch = [
+    { title: 'vecchio', start_ts: now - 5 * day, end_ts: now - 5 * day + 60 },
+    { title: 'ieri', start_ts: now - day, end_ts: now - day + 60 },
+    { title: 'oggi', start_ts: now - 600, end_ts: now - 60 },
+    { title: 'in onda', start_ts: now - 30, end_ts: now + 30 },
+  ];
+  assert.deepEqual(X.archivedPrograms(arch, now, 3).map((p) => p.title), ['oggi', 'ieri']);
+  assert.deepEqual(X.archivedPrograms(arch, now, 0), []);
+});
+
+test('serie: codec dichiarati, etichette, episodio successivo', () => {
+  assert.equal(X.hasCodecs({ video_codec: 'hevc', audio_codec: '' }), true);
+  assert.equal(X.hasCodecs({ video_codec: '', audio_codec: '' }), false);
+  assert.equal(X.hasCodecs(null), false);
+  assert.equal(X.episodeLabel({ season: 1, episode_num: 2 }), 'S01E02');
+  const eps = [{ id: '11' }, { id: '12' }, { id: 21 }];
+  assert.deepEqual(X.nextEpisode(eps, 12), { id: 21 });
+  assert.equal(X.nextEpisode(eps, '21'), null);
+  assert.equal(X.nextEpisode(eps, 'x'), null);
+});
+
 test('URL del proxy locale', () => {
   const proxy = { port: 5555, token: 'tok' };
   const src = 'http://h/live/a/b/1.ts?x=1&y=2';

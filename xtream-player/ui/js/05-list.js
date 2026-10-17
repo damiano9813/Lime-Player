@@ -1,4 +1,4 @@
-// Lista virtualizzata dei canali e dei film.
+// Lista virtualizzata di canali, film e serie.
 'use strict';
 
 // ------------------------------------------------------------------ lista virtualizzata
@@ -8,19 +8,32 @@ const scroller = $('list-scroller'), spacer = $('list-spacer'), rowsLayer = $('l
 
 const { highlight } = XPCore;
 
+// riga attiva: il contenuto in riproduzione, oppure la serie dell'episodio in riproduzione
+function isPlayingRow(it) {
+  if (!S.current) return false;
+  if (S.mode === 'series') return !!S.current._series && S.current._series.stream_id === it.stream_id;
+  return S.currentMode === S.mode && !S.current._catchup && S.current.stream_id === it.stream_id;
+}
+
 function rowHtml(it, idx, terms) {
-  const active = S.current && S.currentMode === S.mode && S.current.stream_id === it.stream_id;
+  const active = isPlayingRow(it);
   const fav = isFav(S.mode, it.stream_id);
   const icon = it.stream_icon && /^https?:\/\//i.test(it.stream_icon)
     ? `<img src="${escapeHtml(it.stream_icon)}" loading="lazy" decoding="async" referrerpolicy="no-referrer" class="w-full h-full object-contain" alt=""><span class="hidden">${escapeHtml(initials(it.name))}</span>`
     : `<span>${escapeHtml(initials(it.name))}</span>`;
   let sub;
+  let extra = '';
   if (S.mode === 'vod') {
-    const resume = lsGet('xp.resume.' + it.stream_id, 0);
+    const resume = lsGet(resumeKey(it), 0);
     sub = [it.container_extension ? it.container_extension.toUpperCase() : '', it.rating > 0 ? '★ ' + Number(it.rating).toFixed(1) : '',
       resume > 30 ? 'riprendi da ' + fmtTime(resume) : ''].filter(Boolean).join(' · ');
+  } else if (S.mode === 'series') {
+    sub = [it.genre, (it.release_date || '').slice(0, 4), it.rating > 0 ? '★ ' + Number(it.rating).toFixed(1) : ''].filter(Boolean).join(' · ');
   } else {
-    sub = isVirtualCat(S.selectedCat[S.mode]) ? (S.catNames[S.mode].get(it.category_id) || '') : '';
+    // programma in onda dalla guida TV (caricata solo per le righe visibili)
+    const now = epgNowTitle(it.stream_id);
+    sub = now || (isVirtualCat(S.selectedCat[S.mode]) ? (S.catNames[S.mode].get(it.category_id) || '') : '');
+    if (String(it.tv_archive) === '1') extra = `<span class="shrink-0 text-ink-subtle" title="Catch-up: programmi passati disponibili">${ICONS.rewind}</span>`;
   }
   const lead = active ? `<span class="w-9 flex justify-end shrink-0">${ICONS.eq.replace('class="eq"', `class="eq${video.paused ? ' paused' : ''}"`)}</span>`
     : `<span class="w-7 text-right text-[11px] font-semibold tabular-nums text-ink-subtle shrink-0">${escapeHtml(it.num || idx + 1)}</span>`;
@@ -31,6 +44,7 @@ function rowHtml(it, idx, terms) {
       <div class="text-sm truncate ${active ? 'text-accent-ink font-bold' : 'text-ink font-medium'}">${highlight(it.name, terms)}</div>
       ${sub ? `<div class="text-[11px] font-medium text-ink-subtle truncate">${escapeHtml(sub)}</div>` : ''}
     </div>
+    ${extra}
     <button data-fav="${idx}" class="fav-btn p-1.5 rounded-md shrink-0 hover:bg-s3 ${fav ? 'is-fav text-accent' : 'text-ink-subtle hover:text-ink'}" title="${fav ? 'Rimuovi dai preferiti' : 'Aggiungi ai preferiti'}" aria-label="${fav ? 'Rimuovi dai preferiti' : 'Aggiungi ai preferiti'}">${fav ? ICONS.star : ICONS.starO}</button>
   </div>`;
 }
@@ -49,6 +63,13 @@ function renderList(force) {
   const terms = searchTerms();
   for (let i = start; i < end; i++) html += rowHtml(S.filtered[i], i, terms);
   rowsLayer.innerHTML = html;
+  if (S.mode === 'live') scheduleRowEpg();
+}
+
+// apre la serie (lista episodi) oppure riproduce canale o film
+function activateItem(it) {
+  if (S.mode === 'series') openSeries(it);
+  else playItem(it, S.mode);
 }
 
 // Chromium emette al massimo un evento scroll per frame: il render è già limitato.
@@ -66,7 +87,7 @@ rowsLayer.addEventListener('click', (ev) => {
   const favBtn = ev.target.closest('[data-fav]');
   if (favBtn) { ev.stopPropagation(); const it = S.filtered[+favBtn.dataset.fav]; if (it) toggleFav(S.mode, it); return; }
   const row = ev.target.closest('[data-idx]');
-  if (row) { const it = S.filtered[+row.dataset.idx]; if (it) playItem(it, S.mode); }
+  if (row) { const it = S.filtered[+row.dataset.idx]; if (it) activateItem(it); }
 });
 
 function scrollToIndex(idx) {
@@ -76,7 +97,9 @@ function scrollToIndex(idx) {
 }
 
 function stepChannel(delta) {
-  if (!S.filtered.length) return;
+  // nelle serie ↑/↓ scorrono gli episodi della serie in riproduzione
+  if (S.current && S.current._kind === 'episode') { stepEpisode(delta); return; }
+  if (S.mode === 'series' || !S.filtered.length) return;
   let idx = S.current && S.currentMode === S.mode ? S.filtered.findIndex((s) => s.stream_id === S.current.stream_id) : -1;
   idx = idx === -1 ? (delta > 0 ? 0 : S.filtered.length - 1) : Math.min(S.filtered.length - 1, Math.max(0, idx + delta));
   scrollToIndex(idx);

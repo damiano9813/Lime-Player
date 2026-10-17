@@ -216,4 +216,4 @@ $('btn-copy').addEventListener('click', async () => {
   const ok = await copyText(S.currentUrl);
   toast(ok ? 'URL copiato negli appunti' : 'Copia non riuscita', ok ? 'ok' : 'error');
 });
-$('btn-fav').addEventListener('click', () => { if (S.current) toggleFav(S.currentMode, S.current); });
+$('btn-fav').addEventListener('click', () => { const t = favTarget(); if (t) toggleFav(t.mode, t.item); });

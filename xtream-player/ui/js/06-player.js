@@ -11,7 +11,13 @@ const P = {
 };
 S.caps = { ffmpeg: null, ffprobe: null, h264_encoder: null, version: '' };
 
-function buildStreamUrl(item, mode, fmt) { return XPCore.buildStreamUrl(S.creds, item, mode, fmt); }
+// gli episodi si riproducono come film (mode 'vod') ma hanno un URL /series/
+function buildStreamUrl(item, mode, fmt) { return XPCore.buildStreamUrl(S.creds, item, item._kind === 'episode' ? 'series' : mode, fmt); }
+// posizione di ripresa: film ed episodi hanno id in spazi diversi; il catch-up non si riprende
+function resumeKey(item) {
+  if (!item || item._catchup) return null;
+  return (item._kind === 'episode' ? 'xp.resume.ep.' : 'xp.resume.') + item.stream_id;
+}
 function proxied(url, opts) { return XPCore.proxyUrl(S.proxy, url, opts); }
 function transcodeUrl(url, r, opts) { return XPCore.transcodeUrl(S.proxy, url, r, opts); }
 
@@ -172,7 +178,7 @@ function showOsdTop(item, mode) {
     img.src = item.stream_icon;
   }
   $('osd-name').textContent = (mode === 'live' && item.num ? item.num + '  ·  ' : '') + item.name;
-  $('osd-sub').textContent = S.catNames[mode].get(item.category_id) || (mode === 'live' ? 'Live TV' : 'Film');
+  $('osd-sub').textContent = item._sub || S.catNames[mode].get(item.category_id) || (mode === 'live' ? 'Live TV' : 'Film');
   el.classList.add('on', 'force');
   clearTimeout(osdTopTimer);
   osdTopTimer = setTimeout(() => el.classList.remove('force'), 4000);
@@ -206,6 +212,7 @@ function resetPlayerUi() {
   ['btn-prev', 'btn-next', 'btn-back10', 'btn-fwd10', 'btn-settings'].forEach((id) => $(id).classList.add('hidden'));
   closeSettings();
   showOsdTop(null);
+  clearContentInfo();
   $('time').textContent = '';
   updatePlayButton();
   updateFavButton();
@@ -219,11 +226,15 @@ function renderInfo(item, mode) {
   $('info-name').title = item.name;
   const type = $('info-type');
   type.classList.remove('hidden');
-  type.textContent = mode === 'live' ? 'LIVE' : 'VOD';
+  type.textContent = mode === 'live' ? 'LIVE' : item._catchup ? 'Catch-up' : item._kind === 'episode' ? 'Serie' : 'VOD';
   type.className = 'badge shrink-0 ' + (mode === 'live' ? 'badge-live' : 'badge-film');
-  const catName = S.catNames[mode].get(item.category_id) || '';
-  const parts = [catName, item.num ? `N. ${item.num}` : '', mode === 'vod' && item.rating > 0 ? `★ ${Number(item.rating).toFixed(1)}` : ''].filter(Boolean);
-  $('info-cat').textContent = parts.join(' · ');
+  if (item._sub) {
+    $('info-cat').textContent = item._sub;
+  } else {
+    const catName = S.catNames[mode].get(item.category_id) || '';
+    const parts = [catName, item.num ? `N. ${item.num}` : '', mode === 'vod' && item.rating > 0 ? `★ ${Number(item.rating).toFixed(1)}` : ''].filter(Boolean);
+    $('info-cat').textContent = parts.join(' · ');
+  }
   const logo = $('info-logo');
   if (item.stream_icon && /^https?:\/\//i.test(item.stream_icon)) {
     logo.innerHTML = `<img src="${escapeHtml(item.stream_icon)}" referrerpolicy="no-referrer" class="w-full h-full object-contain" alt="">`;
@@ -240,11 +251,22 @@ function renderInfo(item, mode) {
   if (mode !== 'live') closeSettings();
   updateFavButton();
   updateTech();
+  renderContentInfo(item, mode);
+}
+
+// a cosa si riferisce "Preferiti": per un episodio è la serie, il catch-up non si salva
+function favTarget() {
+  const it = S.current;
+  if (!it || it._catchup) return null;
+  if (it._kind === 'episode') return it._series ? { mode: 'series', item: it._series } : null;
+  return { mode: S.currentMode, item: it };
 }
 
 function updateFavButton() {
   const b = $('btn-fav');
-  const fav = !!S.current && isFav(S.currentMode, S.current.stream_id);
+  const t = favTarget();
+  b.disabled = !t;
+  const fav = !!t && isFav(t.mode, t.item.stream_id);
   b.innerHTML = `<span class="${fav ? 'text-accent' : ''}">${fav ? ICONS.star : ICONS.starO}</span>${fav ? 'Preferito' : 'Preferiti'}`;
   b.title = fav ? 'Rimuovi dai preferiti' : 'Aggiungi ai preferiti';
   b.setAttribute('aria-pressed', String(fav));
@@ -289,7 +311,12 @@ function playItem(item, mode, opts) {
   P.vodOffset = 0;
   P.vodDuration = opts.duration && isFinite(opts.duration) ? opts.duration : NaN;
   renderInfo(item, mode);
-  if (!opts.keepRetries) { pushRecent(mode, item); showOsdTop(item, mode); }
+  if (!opts.keepRetries) {
+    // nei recenti vanno le serie (non i singoli episodi); il catch-up non si registra
+    if (item._kind === 'episode') { if (item._series) pushRecent('series', item._series); }
+    else if (!item._catchup) pushRecent(mode, item);
+    showOsdTop(item, mode);
+  }
   renderList(true);
   updateLocateButton();
   setSpinner(true);
@@ -516,14 +543,36 @@ function startWatchdog() {
 }
 
 async function startVod(item, opts) {
-  const url = buildStreamUrl(item, 'vod');
+  // il catch-up ha un URL /timeshift/ già pronto
+  const url = item._url || buildStreamUrl(item, 'vod');
   S.currentUrl = url;
   const ext = (item.container_extension || 'mp4').toLowerCase();
-  const saved = lsGet('xp.resume.' + item.stream_id, 0);
+  const rk = resumeKey(item);
+  const saved = rk ? lsGet(rk, 0) : 0;
   const resumeAt = opts.ss != null ? opts.ss : (saved > 30 ? saved : 0);
+  if (!isFinite(P.vodDuration) && item._duration > 0) P.vodDuration = item._duration;
   if (opts.route) { startVodTranscoded(item, url, opts.route, resumeAt, P.vodDuration, false); return; }
   if (ext === 'm3u8' && window.Hls && Hls.isSupported()) { startHls(url, false); return; }
   const native = ['mp4', 'm4v', 'mov', 'webm'].includes(ext);
+  // codec dichiarati dal pannello (episodi, scheda film): si sceglie il percorso senza ffprobe
+  const vodInfo = item._kind || item._catchup ? null : await vodInfoFor(item);
+  if (S.current !== item) return;
+  const declared = item._codecs || (vodInfo && vodInfo.codecs);
+  // durata dalla scheda del film: serve alla barra di avanzamento dei film convertiti
+  if (!isFinite(P.vodDuration) && vodInfo && vodInfo.meta.duration_secs > 0) P.vodDuration = vodInfo.meta.duration_secs;
+  if (S.caps.ffmpeg && XPCore.hasCodecs(declared)) {
+    const route = { mode: 'transcode', v: probeVideoOk(declared) ? 'copy' : 'h264', a: probeAudioOk(declared) ? 'copy' : 'aac' };
+    if (!native || route.v !== 'copy' || route.a !== 'copy') {
+      startVodTranscoded(item, url, route, resumeAt, P.vodDuration, resumeAt > 0);
+      return;
+    }
+  }
+  // senza ffmpeg il catch-up (MPEG-TS) si legge con mpegts.js
+  if (ext === 'ts' && !S.caps.ffmpeg && mpegtsReady()) {
+    setStatus('Caricamento…');
+    startMpegts(proxied(url), false, item, 'vod');
+    return;
+  }
   if (!native && S.caps.ffprobe) {
     setStatus('Analisi codec del file…');
     try {
@@ -608,7 +657,13 @@ video.addEventListener('pause', () => { updatePlayButton(); if (S.current && vid
 video.addEventListener('play', () => updatePlayButton());
 video.addEventListener('loadedmetadata', updateTech);
 video.addEventListener('volumechange', () => updateVolumeUi());
-video.addEventListener('ended', () => { if (S.current && S.currentMode === 'vod') { lsDel('xp.resume.' + S.current.stream_id); setStatus('Terminato'); } });
+video.addEventListener('ended', () => {
+  if (!S.current || S.currentMode !== 'vod') return;
+  const rk = resumeKey(S.current);
+  if (rk) lsDel(rk);
+  setStatus('Terminato');
+  onPlaybackEnded(S.current);
+});
 video.addEventListener('error', async () => {
   if (!S.current) return;
   const item = S.current, mode = S.currentMode;
@@ -648,7 +703,8 @@ video.addEventListener('timeupdate', () => {
   updateTimeUi();
   if (S.current && S.currentMode === 'vod' && video.currentTime > 0) {
     const now = Date.now();
-    if (now - lastResumeSave > 5000) { lastResumeSave = now; lsSet('xp.resume.' + S.current.stream_id, Math.floor(currentPlayTime())); }
+    const rk = resumeKey(S.current);
+    if (rk && now - lastResumeSave > 5000) { lastResumeSave = now; lsSet(rk, Math.floor(currentPlayTime())); }
   }
 });
 video.addEventListener('progress', () => updateTimeUi());

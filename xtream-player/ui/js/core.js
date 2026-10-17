@@ -49,11 +49,22 @@
 
   // ------------------------------------------------------------------ URL
   const enc = (s) => encodeURIComponent(s);
+  // mode: 'live' | 'vod' (film) | 'series' (episodio, item.stream_id = id dell'episodio)
   function buildStreamUrl(creds, item, mode, fmt) {
     const c = creds;
     if (mode === 'live') return `${c.server}/live/${enc(c.username)}/${enc(c.password)}/${item.stream_id}.${fmt}`;
     const ext = (item.container_extension || 'mp4').replace(/^\./, '');
-    return `${c.server}/movie/${enc(c.username)}/${enc(c.password)}/${item.stream_id}.${ext}`;
+    const kind = mode === 'series' ? 'series' : 'movie';
+    return `${c.server}/${kind}/${enc(c.username)}/${enc(c.password)}/${item.stream_id}.${ext}`;
+  }
+  // "2026-10-17 14:10:00" (orario del server, dalla guida) -> "2026-10-17:14-10"
+  function timeshiftStart(start) {
+    const m = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}):(\d{2})/.exec(String(start || ''));
+    return m ? `${m[1]}:${m[2]}-${m[3]}` : '';
+  }
+  function timeshiftUrl(creds, streamId, start, durationMin) {
+    const c = creds;
+    return `${c.server}/timeshift/${enc(c.username)}/${enc(c.password)}/${Math.max(1, Math.ceil(durationMin))}/${timeshiftStart(start)}/${streamId}.ts`;
   }
   // `opts.live`: flusso live MPEG-TS, il proxy salta la raffica iniziale del server
   function proxyUrl(proxy, url, opts) {
@@ -133,9 +144,31 @@
   // dopo un periodo stabile scende di 0,15 s, mai sotto il minimo del preset
   const relaxTarget = (target, floor) => Math.max(floor, target - 0.15);
 
+  // ------------------------------------------------------------------ guida TV e serie
+  // programma in onda e successivo (orari in secondi Unix)
+  function currentAndNext(entries, now) {
+    const list = (entries || []).filter((e) => e.end_ts > now).sort((a, b) => a.start_ts - b.start_ts);
+    const cur = list.find((e) => e.start_ts <= now && e.end_ts > now) || null;
+    const next = list.find((e) => e.start_ts >= (cur ? cur.end_ts : now)) || null;
+    return { now: cur, next };
+  }
+  const epgProgress = (e, now) => (e && e.end_ts > e.start_ts ? Math.min(1, Math.max(0, (now - e.start_ts) / (e.end_ts - e.start_ts))) : 0);
+  // programmi già finiti ancora nell'archivio del canale (tv_archive_duration giorni), dal più recente
+  function archivedPrograms(entries, now, days) {
+    const from = now - Math.max(0, Number(days) || 0) * 86400;
+    return (entries || []).filter((e) => e.end_ts <= now && e.start_ts >= from).sort((a, b) => b.start_ts - a.start_ts);
+  }
+  const hasCodecs = (c) => !!(c && (c.video_codec || c.audio_codec));
+  const episodeLabel = (e) => `S${String(e.season).padStart(2, '0')}E${String(e.episode_num).padStart(2, '0')}`;
+  function nextEpisode(episodes, currentId) {
+    const i = (episodes || []).findIndex((e) => String(e.id) === String(currentId));
+    return i === -1 ? null : episodes[i + 1] || null;
+  }
+
   return {
     escapeHtml, normKey, initials, fmtTime, debounce, highlight,
-    buildStreamUrl, proxyUrl, transcodeUrl,
+    buildStreamUrl, proxyUrl, transcodeUrl, timeshiftStart, timeshiftUrl,
+    currentAndNext, epgProgress, archivedPrograms, hasCodecs, episodeLabel, nextEpisode,
     audioMime, probeVideoOk, probeAudioOk, mergeRoute, describeRoute, normalizeSavedRoute, mediaInfoRoute,
     latencyStep, stallTarget, relaxTarget,
   };

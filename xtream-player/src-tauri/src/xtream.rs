@@ -110,6 +110,9 @@ pub struct StreamItem {
     pub added: String,
     #[serde(default, deserialize_with = "flex_string")]
     pub tv_archive: String,
+    /// giorni di archivio per il catch-up
+    #[serde(default, deserialize_with = "flex_string")]
+    pub tv_archive_duration: String,
 }
 
 #[derive(Debug, Clone, Serialize)]

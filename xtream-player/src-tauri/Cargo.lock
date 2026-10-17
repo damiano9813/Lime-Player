@@ -4752,6 +4752,7 @@ dependencies = [
 name = "xtream-player"
 version = "1.0.0"
 dependencies = [
+ "base64 0.22.1",
  "futures-util",
  "reqwest 0.12.28",
  "serde",

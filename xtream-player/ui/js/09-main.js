@@ -37,7 +37,7 @@ document.addEventListener('keydown', (ev) => {
     if (ev.target.id === 'stream-search' && (ev.key === 'ArrowDown' || ev.key === 'Enter')) {
       ev.preventDefault(); ev.target.blur();
       if (S.filtered.length) {
-        if (ev.key === 'Enter') { scrollToIndex(0); playItem(S.filtered[0], S.mode); } else stepChannel(1);
+        if (ev.key === 'Enter') { scrollToIndex(0); activateItem(S.filtered[0]); } else if (S.mode !== 'series') stepChannel(1);
       }
     }
     return;
@@ -62,10 +62,11 @@ document.addEventListener('keydown', (ev) => {
     case 'ArrowUp': ev.preventDefault(); stepChannel(-1); break;
     case 'ArrowRight': if (S.currentMode === 'vod') { ev.preventDefault(); seekBy(10); } break;
     case 'ArrowLeft': if (S.currentMode === 'vod') { ev.preventDefault(); seekBy(-10); } break;
-    case '/': ev.preventDefault(); if (theaterOn()) setTheater(false); $('stream-search').focus(); $('stream-search').select(); break;
+    case '/': ev.preventDefault(); if (theaterOn()) setTheater(false); closeSeries(); $('stream-search').focus(); $('stream-search').select(); break;
     case '?': ev.preventDefault(); showShortcuts(); break;
     case 'Escape':
       if (settingsOpen()) closeSettings();
+      else if (S.seriesView && !theaterOn()) closeSeries();
       else if (theaterOn() && !document.fullscreenElement) setTheater(false);
       break;
     default: break;

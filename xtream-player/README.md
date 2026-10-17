@@ -20,12 +20,15 @@ xtream-player/
 │     ├─ 05-list.js              lista virtualizzata
 │     ├─ 06-player.js            player, conversione ffmpeg, buffer adattivo
 │     ├─ 07-controls.js          controlli del player e pannello info
-│     └─ 08-main.js              tastiera e avvio
+│     ├─ 08-content.js           guida TV, serie ed episodi, catch-up, scheda film
+│     └─ 09-main.js              tastiera e avvio
 └─ src-tauri/
    ├─ Cargo.toml, build.rs, tauri.conf.json, capabilities/, icons/
    └─ src/
       ├─ main.rs                 avvio e registrazione dei comandi
       ├─ xtream.rs               client Xtream Codes, modelli tolleranti, comandi
+      ├─ catalog.rs              guida TV (base64), serie con episodi, scheda film
+      ├─ cache.rs                cache su disco delle liste
       ├─ state.rs, creds.rs      stato condiviso, credenziali
       ├─ proxy.rs                proxy locale (CORS, Range, playlist HLS)
       ├─ media.rs                rilevamento ffmpeg/encoder, ffprobe, argomenti
@@ -112,3 +115,14 @@ Output: `src-tauri\target\release\xtream-player.exe` e l'installer NSIS in `src-
 - **Raffica iniziale**: su tutti i percorsi live il proxy salta i 20-30 s di video vecchio che
   molti server inviano alla connessione e passa al player (o a ffmpeg) solo il bordo live.
 - Tasto **Backspace**: torna all'ultimo contenuto visto.
+- **Guida TV**: programma in onda e successivo nel pannello info (con barra di avanzamento),
+  nell'OSD a schermo intero e nelle righe visibili della lista (richiesta solo a scroll fermo,
+  al massimo 4 richieste insieme, memorizzata 10 minuti).
+- **Serie TV**: terza sezione con stagioni ed episodi; ripresa per episodio, episodio
+  successivo automatico, ↑/↓ tra gli episodi. Preferiti e recenti si riferiscono alla serie.
+- **Catch-up**: per i canali con archivio (icona accanto al nome) il pannello "Rivedi i
+  programmi passati" elenca i programmi degli ultimi giorni; si aprono con
+  `/timeshift/<utente>/<password>/<minuti>/<AAAA-MM-GG:HH-MM>/<id>.ts` e si riproducono come un film.
+- **Scheda film**: trama, genere, anno, regia, cast, durata e locandina (`get_vod_info`).
+  Quando il pannello dichiara i codec (film ed episodi), il percorso di conversione si sceglie
+  subito, senza analisi con ffprobe.

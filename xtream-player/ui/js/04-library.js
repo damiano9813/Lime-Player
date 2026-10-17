@@ -9,13 +9,14 @@ function updateModeButtons() {
       (active ? 'bg-ink text-s1' : 'text-ink-muted hover:text-ink hover:bg-s3');
     b.setAttribute('aria-selected', String(active));
   });
-  $('stream-search').placeholder = S.mode === 'vod' ? 'Cerca film' : 'Cerca canale';
+  $('stream-search').placeholder = { vod: 'Cerca film', series: 'Cerca serie' }[S.mode] || 'Cerca canale';
 }
 document.querySelectorAll('.mode-btn').forEach((b) => b.addEventListener('click', () => switchMode(b.dataset.mode)));
 
 async function switchMode(mode, force) {
-  if (mode !== 'live' && mode !== 'vod') return;
+  if (!MODES.includes(mode)) return;
   if (mode === S.mode && !force) return;
+  closeSeries();
   S.mode = mode;
   lsSet('xp.mode', mode);
   updateModeButtons();
@@ -124,9 +125,10 @@ async function loadStreams(mode, catId, forceReload) {
       showListState('loading');
       try {
         // con "prefer" la lista salvata su disco arriva subito; quella aggiornata con l'evento list-updated
-        const res = await invoke('get_streams', {
-          ...S.creds, mode: MODE_API[mode].streams, categoryId: catId === ALL ? '' : catId, cache: forceReload ? 'refresh' : 'prefer',
-        });
+        const args = { ...S.creds, categoryId: catId === ALL ? '' : catId, cache: forceReload ? 'refresh' : 'prefer' };
+        const res = mode === 'series'
+          ? await invoke('get_series_list', args)
+          : await invoke('get_streams', { ...args, mode: MODE_API[mode].streams });
         items = prepareItems(res.items);
         S.cache.set(key, items);
         S.listAge.set(key, res.fetched_at);
@@ -189,7 +191,7 @@ function applyFilter(resetScroll) {
   if (resetScroll) $('list-scroller').scrollTop = 0;
   if (!S.filtered.length) {
     const cat = S.selectedCat[S.mode];
-    const unitOne = S.mode === 'vod' ? 'un film' : 'un canale';
+    const unitOne = { vod: 'un film', series: 'una serie' }[S.mode] || 'un canale';
     showListState('empty', terms.length
       ? `Nessun risultato per “${S.search.trim()}”.` + (cat !== ALL ? ' La ricerca riguarda solo la categoria selezionata.' : '')
       : cat === FAV ? `Nessun preferito: passa sopra ${unitOne} e premi la stella.`
@@ -284,6 +286,7 @@ function slimItem(item) {
   return {
     stream_id: item.stream_id, name: item.name, stream_icon: item.stream_icon, category_id: item.category_id,
     container_extension: item.container_extension, num: item.num, epg_channel_id: item.epg_channel_id, rating: item.rating,
+    tv_archive: item.tv_archive, tv_archive_duration: item.tv_archive_duration, genre: item.genre, release_date: item.release_date,
   };
 }
 function toggleFav(mode, item) {

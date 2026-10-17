@@ -86,8 +86,9 @@ async function logout() {
   S.listAge.clear();
   S.previous = null;
   S.creds = null; S.account = null; S.cache.clear();
-  S.categories = { live: null, vod: null };
-  S.catNames = { live: new Map(), vod: new Map() };
+  S.categories = perMode(() => null);
+  S.catNames = perMode(() => new Map());
+  closeSeries();
   S.list = []; S.filtered = [];
   $('f-pass').value = '';
   $('app-view').classList.add('hidden');

@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod cache;
+mod catalog;
 mod creds;
 mod external;
 mod media;
@@ -64,7 +65,12 @@ fn main() {
             external::open_in_external_player,
             media::get_media_capabilities,
             media::probe_stream,
-            cache::clear_list_cache
+            cache::clear_list_cache,
+            catalog::get_short_epg,
+            catalog::get_epg_day,
+            catalog::get_series_list,
+            catalog::get_series_info,
+            catalog::get_vod_info
         ])
         .run(tauri::generate_context!())
         .expect("errore durante l'avvio dell'applicazione");
