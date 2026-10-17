@@ -25,6 +25,7 @@ function zapDigit(d) {
 document.addEventListener('keydown', (ev) => {
   if ($('app-view').classList.contains('hidden')) return;
   if (modalOpen()) { if (ev.key === 'Escape') { ev.preventDefault(); closeModal(false); } return; }
+  if (settingsPanelOpen()) { if (ev.key === 'Escape') { ev.preventDefault(); closeSettings(); } return; }
   const tag = (ev.target && ev.target.tagName) || '';
   const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
   if (typing) {
@@ -65,7 +66,7 @@ document.addEventListener('keydown', (ev) => {
     case '/': ev.preventDefault(); if (theaterOn()) setTheater(false); closeSeries(); $('stream-search').focus(); $('stream-search').select(); break;
     case '?': ev.preventDefault(); showShortcuts(); break;
     case 'Escape':
-      if (settingsOpen()) closeSettings();
+      if (tracksMenuOpen()) closeTracksMenu();
       else if (S.seriesView && !theaterOn()) closeSeries();
       else if (theaterOn() && !document.fullscreenElement) setTheater(false);
       break;

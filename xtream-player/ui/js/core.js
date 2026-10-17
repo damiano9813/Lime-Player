@@ -67,13 +67,31 @@
     return `${c.server}/timeshift/${enc(c.username)}/${enc(c.password)}/${Math.max(1, Math.ceil(durationMin))}/${timeshiftStart(start)}/${streamId}.ts`;
   }
   // `opts.live`: flusso live MPEG-TS, il proxy salta la raffica iniziale del server
+  // `opts.sid`: sessione con cui il backend registra le tracce lette dalla PMT
   function proxyUrl(proxy, url, opts) {
     if (!proxy) return url;
-    return `http://127.0.0.1:${proxy.port}/p/${proxy.token}?u=${encodeURIComponent(url)}${opts && opts.live ? '&live=1' : ''}`;
+    const o = opts || {};
+    return `http://127.0.0.1:${proxy.port}/p/${proxy.token}?u=${encodeURIComponent(url)}${o.live ? '&live=1' : ''}${o.sid ? '&sid=' + enc(o.sid) : ''}`;
   }
+  // r.at: traccia audio (-map 0:a:N); opts.q: qualità, opts.ac: 'orig' per il 5.1,
+  // opts.ch: canali della traccia sorgente se noti, opts.sid: sessione per le tracce live
   function transcodeUrl(proxy, url, r, opts) {
     const q = new URLSearchParams({ u: url, v: r.v, a: r.a, live: opts.live ? '1' : '0', ss: String(Math.max(0, Math.floor(opts.ss || 0))) });
+    if (r.at > 0) q.set('at', String(r.at));
+    if (opts.q && opts.q !== 'bal') q.set('q', opts.q);
+    if (opts.ac === 'orig') q.set('ac', 'orig');
+    if (opts.ch > 0) q.set('ch', String(opts.ch));
+    if (opts.sid) q.set('sid', opts.sid);
+    // film: tracce di sottotitoli estratte dallo stesso ffmpeg (servite da /s/ con lo stesso sid)
+    if (opts.subs && opts.subs.length) q.set('subs', opts.subs.join(','));
     return `http://127.0.0.1:${proxy.port}/t/${proxy.token}?${q.toString()}`;
+  }
+  // sottotitoli testuali in WebVTT; `ss` = punto di partenza del film convertito. Con `sid` il
+  // testo arriva dalla sessione /t/ in corso (nessuna connessione in più al provider)
+  function subtitleUrl(proxy, url, index, ss, sid) {
+    const q = new URLSearchParams({ u: url, i: String(index), ss: String(Math.max(0, Math.floor(ss || 0))) });
+    if (sid) q.set('sid', sid);
+    return `http://127.0.0.1:${proxy.port}/s/${proxy.token}?${q.toString()}`;
   }
 
   // ------------------------------------------------------------------ codec e percorsi
@@ -95,8 +113,12 @@
     const c = (info.audio_codec || '').toLowerCase();
     return !c || c === 'aac' || c === 'mp3' || (c === 'opus' && !!opusOk);
   }
+  // la traccia audio scelta (`at`, assente = prima traccia) resta quella del percorso attuale
   function mergeRoute(a, b) {
-    return { mode: 'transcode', v: (a.v === 'h264' || b.v === 'h264') ? 'h264' : 'copy', a: (a.a === 'aac' || b.a === 'aac') ? 'aac' : 'copy' };
+    const r = { mode: 'transcode', v: (a.v === 'h264' || b.v === 'h264') ? 'h264' : 'copy', a: (a.a === 'aac' || b.a === 'aac') ? 'aac' : 'copy' };
+    const at = a.at > 0 ? a.at : b.at > 0 ? b.at : 0;
+    if (at) r.at = at;
+    return r;
   }
   function describeRoute(r, encoder) {
     const p = [];
@@ -104,9 +126,101 @@
     if (r.a === 'aac') p.push('audio → AAC');
     return p.length ? p.join(', ') : 'remux senza conversione';
   }
-  // percorso salvato per un canale: valido solo se converte qualcosa
+  // percorso salvato per un canale: valido solo se converte qualcosa o sceglie un'altra traccia audio
   function normalizeSavedRoute(r) {
-    return r && (r.v === 'h264' || r.a === 'aac') ? { mode: 'transcode', v: r.v === 'h264' ? 'h264' : 'copy', a: r.a === 'aac' ? 'aac' : 'copy' } : null;
+    const at = r && Number.isInteger(r.at) && r.at > 0 && r.at < 64 ? r.at : 0;
+    if (!r || !(r.v === 'h264' || r.a === 'aac' || at)) return null;
+    const out = { mode: 'transcode', v: r.v === 'h264' ? 'h264' : 'copy', a: r.a === 'aac' ? 'aac' : 'copy' };
+    if (at) out.at = at;
+    return out;
+  }
+
+  // ------------------------------------------------------------------ tracce e lingue
+  // codici ISO 639-1 e 639-2/B → 639-2/T (quello usato qui come forma canonica)
+  const LANG_ALIAS = {
+    it: 'ita', en: 'eng', es: 'spa', fr: 'fra', fre: 'fra', de: 'deu', ger: 'deu', pt: 'por', nl: 'nld', dut: 'nld',
+    pl: 'pol', ro: 'ron', rum: 'ron', ru: 'rus', tr: 'tur', ar: 'ara', sq: 'sqi', alb: 'sqi', hr: 'hrv', sr: 'srp',
+    el: 'ell', gre: 'ell', ja: 'jpn', ko: 'kor', zh: 'zho', chi: 'zho', cs: 'ces', cze: 'ces', hu: 'hun', sv: 'swe',
+    no: 'nor', nb: 'nor', da: 'dan', fi: 'fin', uk: 'ukr', bg: 'bul', sk: 'slk', slo: 'slk', sl: 'slv', he: 'heb',
+    ca: 'cat', hi: 'hin', fa: 'fas', per: 'fas', bs: 'bos', mk: 'mkd', mac: 'mkd', ku: 'kur', ur: 'urd', ta: 'tam',
+  };
+  const LANG_NAMES = {
+    ita: 'Italiano', eng: 'Inglese', spa: 'Spagnolo', fra: 'Francese', deu: 'Tedesco', por: 'Portoghese', nld: 'Olandese',
+    pol: 'Polacco', ron: 'Rumeno', rus: 'Russo', tur: 'Turco', ara: 'Arabo', sqi: 'Albanese', hrv: 'Croato', srp: 'Serbo',
+    ell: 'Greco', jpn: 'Giapponese', kor: 'Coreano', zho: 'Cinese', ces: 'Ceco', hun: 'Ungherese', swe: 'Svedese',
+    nor: 'Norvegese', dan: 'Danese', fin: 'Finlandese', ukr: 'Ucraino', bul: 'Bulgaro', slk: 'Slovacco', slv: 'Sloveno',
+    heb: 'Ebraico', cat: 'Catalano', hin: 'Hindi', fas: 'Persiano', bos: 'Bosniaco', mkd: 'Macedone', kur: 'Curdo',
+    urd: 'Urdu', tam: 'Tamil', lat: 'Latino', mul: 'Più lingue', qaa: 'Lingua originale', mis: 'Altra lingua',
+  };
+  // lingue proposte nelle impostazioni (preferenza audio e sottotitoli)
+  const PREFERRED_LANGS = ['ita', 'eng', 'spa', 'fra', 'deu', 'por', 'nld', 'pol', 'ron', 'rus', 'tur', 'ara', 'sqi', 'ell', 'jpn'];
+  // "it-IT", "ITA", "ger" → "ita", "ita", "deu"; vuoto per und/zxx o codici non validi
+  function normLang(code) {
+    const c = String(code || '').trim().toLowerCase().split(/[-_]/)[0];
+    if (!/^[a-z]{2,3}$/.test(c) || c === 'und' || c === 'zxx') return '';
+    return LANG_ALIAS[c] || c;
+  }
+  function langName(code) {
+    const c = normLang(code);
+    return c ? LANG_NAMES[c] || c.toUpperCase() : 'Lingua non indicata';
+  }
+  const CODEC_NAMES = {
+    aac: 'AAC', aac_latm: 'AAC LATM', mp2: 'MP2', mp3: 'MP3', ac3: 'Dolby Digital', eac3: 'Dolby Digital Plus', dts: 'DTS',
+    truehd: 'Dolby TrueHD', opus: 'Opus', flac: 'FLAC', vorbis: 'Vorbis', subrip: 'SRT', srt: 'SRT', ass: 'ASS', ssa: 'SSA',
+    mov_text: 'Testo MP4', webvtt: 'WebVTT', dvb_subtitle: 'DVB', dvb_teletext: 'Televideo', hdmv_pgs_subtitle: 'PGS',
+    dvd_subtitle: 'DVD',
+  };
+  const codecName = (c) => CODEC_NAMES[c] || (c ? String(c).toUpperCase() : '');
+  function channelsLabel(n) {
+    n = Number(n) || 0;
+    return n === 1 ? 'mono' : n === 2 ? 'stereo' : n === 6 ? '5.1' : n === 8 ? '7.1' : n > 0 ? `${n} canali` : '';
+  }
+  // "Italiano · Dolby Digital 5.1 · Commento" (i titoli uguali alla lingua non si ripetono)
+  function trackLabel(t) {
+    const name = langName(t.lang);
+    const tech = [codecName(t.codec), channelsLabel(t.channels)].filter(Boolean).join(' ');
+    const title = t.title && t.title.toLowerCase() !== name.toLowerCase() ? t.title : '';
+    return [name, tech, title, t.forced ? 'forzati' : ''].filter(Boolean).join(' · ');
+  }
+  // indice (nell'elenco) della traccia nella lingua preferita: prima quella predefinita, poi la prima;
+  // -1 se non c'è preferenza o nessuna traccia corrisponde; `textOnly`: solo sottotitoli testuali
+  function pickTrack(tracks, pref, textOnly) {
+    const p = normLang(pref);
+    if (!p || !tracks) return -1;
+    const match = tracks.map((t, i) => [t, i]).filter(([t]) => normLang(t.lang) === p && (!textOnly || t.text));
+    if (!match.length) return -1;
+    const def = match.find(([t]) => t.default && !t.forced);
+    const plain = match.find(([t]) => !t.forced);
+    return (def || plain || match[0])[1];
+  }
+  // audio che mpegts.js/WebView2 riproduce senza conversione (nomi ffmpeg)
+  const audioCopyOk = (codec, opusOk) => { const c = String(codec || '').toLowerCase(); return c === 'aac' || c === 'mp3' || (c === 'opus' && !!opusOk); };
+  // Percorso per ascoltare la traccia audio `track` (con il suo indice `index` tra le tracce audio).
+  // La prima traccia con audio compatibile resta sul percorso diretto, se lo era già.
+  function audioTrackRoute(current, track, opts) {
+    const o = opts || {};
+    const a = audioCopyOk(track.codec, o.opusOk) ? 'copy' : 'aac';
+    const v = current && current.v === 'h264' ? 'h264' : 'copy';
+    if (track.index === 0 && a === 'copy' && v === 'copy' && current && current.mode === 'direct' && !o.forceTranscode) {
+      return { mode: 'direct', v: 'copy', a: 'copy' };
+    }
+    const r = { mode: 'transcode', v, a };
+    if (track.index > 0) r.at = track.index;
+    return r;
+  }
+
+  // ------------------------------------------------------------------ impostazioni
+  const SETTINGS_DEFAULTS = { audioOut: 'stereo', quality: 'bal', audioLang: '', subLang: '', external: 'auto' };
+  function normalizeSettings(raw) {
+    const r = raw && typeof raw === 'object' ? raw : {};
+    const pick = (v, allowed, def) => (allowed.includes(v) ? v : def);
+    return {
+      audioOut: pick(r.audioOut, ['stereo', 'orig'], 'stereo'),
+      quality: pick(r.quality, ['fast', 'bal', 'high'], 'bal'),
+      audioLang: normLang(r.audioLang),
+      subLang: normLang(r.subLang),
+      external: pick(r.external, ['auto', 'mpv', 'vlc'], 'auto'),
+    };
   }
 
   // Decide cosa convertire dai metadati di mpegts.js (MEDIA_INFO) sul percorso diretto.
@@ -167,7 +281,9 @@
 
   return {
     escapeHtml, normKey, initials, fmtTime, debounce, highlight,
-    buildStreamUrl, proxyUrl, transcodeUrl, timeshiftStart, timeshiftUrl,
+    buildStreamUrl, proxyUrl, transcodeUrl, subtitleUrl, timeshiftStart, timeshiftUrl,
+    normLang, langName, codecName, channelsLabel, trackLabel, pickTrack, audioCopyOk, audioTrackRoute, PREFERRED_LANGS,
+    SETTINGS_DEFAULTS, normalizeSettings,
     currentAndNext, epgProgress, archivedPrograms, hasCodecs, episodeLabel, nextEpisode,
     audioMime, probeVideoOk, probeAudioOk, mergeRoute, describeRoute, normalizeSavedRoute, mediaInfoRoute,
     latencyStep, stallTarget, relaxTarget,

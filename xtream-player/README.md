@@ -50,6 +50,16 @@ cd ..
 npm test
 ```
 
+**Banco di prova del proxy** (senza aprire l'app): avvia il proxy reale su
+`http://127.0.0.1:17999/` con token `bench` per le pagine di prova nel browser; in sviluppo le
+tracce lette dalla PMT dei live vengono stampate su stdout (`[dev] tracce <sid>: ...`).
+
+```powershell
+cd xtream-player\src-tauri
+$env:XP_BENCH_PORT = "17999"; $env:XP_BENCH_SECS = "600"
+cargo test proxy_bench -- --ignored --nocapture
+```
+
 ## Prerequisiti (una volta sola)
 
 1. **Microsoft C++ Build Tools** (workload "Sviluppo di applicazioni desktop con C++"):
@@ -101,9 +111,9 @@ Output: `src-tauri\target\release\xtream-player.exe` e l'installer NSIS in `src-
 ## Note tecniche
 
 - **Proxy locale**: i server Xtream non inviano header CORS, quindi `fetch` di mpegts.js e hls.js verrebbe bloccato dal WebView. `main.rs` avvia un proxy HTTP su `127.0.0.1` (porta casuale, protetto da un token casuale) che aggiunge CORS, imposta lo User-Agent `IPTVSmartersPro`, segue i redirect, inoltra `Range` (seek nei VOD) e riscrive le playlist HLS.
-- **Live**: MPEG-TS via mpegts.js; dopo un errore si riprova e al secondo tentativo si passa a HLS (hls.js). Il formato si può scegliere anche dal menu nei controlli ("Forza ffmpeg" converte sempre l'audio).
-- **Codec**: l'app riconosce i codec non supportati (dai metadati dello stream e controllando che audio e video vengano davvero decodificati) e passa da sola alla conversione ffmpeg. La scelta viene ricordata per ogni canale, così lo zapping successivo è immediato. I film MKV/AVI vengono analizzati con ffprobe prima della riproduzione; il seek riavvia ffmpeg dal punto scelto.
-- **Buffer adattivo (live)**: parte con circa 1 s di buffer, recupera il ritardo accelerando leggermente la velocità (fino a 1,15×, con tono preservato) e aumenta il buffer solo se si verifica uno scatto; dopo 45 s senza scatti torna a ridurlo. Il menu "Latenza minima / Bilanciata / Stabile" fissa il buffer minimo.
+- **Live**: MPEG-TS via mpegts.js; dopo un errore si riprova e al secondo tentativo si passa a HLS (hls.js). Il formato si sceglie nelle Impostazioni ("Forza ffmpeg" converte sempre l'audio).
+- **Codec**: l'app riconosce i codec non supportati (dai metadati dello stream e controllando che audio e video vengano davvero decodificati) e passa da sola alla conversione ffmpeg. La scelta viene ricordata per ogni canale, così lo zapping successivo è immediato. Film ed episodi vengono analizzati con ffprobe prima della riproduzione; il seek riavvia ffmpeg dal punto scelto.
+- **Buffer adattivo (live)**: parte con circa 1 s di buffer, recupera il ritardo accelerando leggermente la velocità (fino a 1,15×, con tono preservato) e aumenta il buffer solo se si verifica uno scatto; dopo 45 s senza scatti torna a ridurlo. Nelle Impostazioni "Minimo / Medio / Stabile" fissa il buffer minimo.
 - Prima di aprire il player esterno lo stream interno viene chiuso, per non superare il limite di connessioni dell'account.
 - **Credenziali**: salvate in chiaro in `localStorage` e in `%APPDATA%\com.xtreamplayer.desktop\credentials.json`. "Esci e dimentica credenziali" le cancella entrambe.
 - I certificati HTTPS non validi vengono accettati, perché molti provider IPTV usano certificati self-signed.
@@ -124,5 +134,41 @@ Output: `src-tauri\target\release\xtream-player.exe` e l'installer NSIS in `src-
   programmi passati" elenca i programmi degli ultimi giorni; si aprono con
   `/timeshift/<utente>/<password>/<minuti>/<AAAA-MM-GG:HH-MM>/<id>.ts` e si riproducono come un film.
 - **Scheda film**: trama, genere, anno, regia, cast, durata e locandina (`get_vod_info`).
-  Quando il pannello dichiara i codec (film ed episodi), il percorso di conversione si sceglie
-  subito, senza analisi con ffprobe.
+  Se ffprobe non c'è o l'analisi non riesce, i codec dichiarati dal pannello (film ed episodi)
+  bastano a scegliere il percorso di conversione.
+- **Impostazioni** (ingranaggio nella barra laterale): buffer e modalità dei live, uscita audio
+  (Stereo / Originale), lingua audio e sottotitoli preferite, qualità della conversione, player
+  esterno preferito (mpv o VLC), "Svuota cache liste", stato di ffmpeg e dell'encoder con nuovo
+  rilevamento. Salvate in `localStorage` (`xp.settings`, `xp.latMode`, `xp.liveFormat`).
+- **Tracce audio dei live**: mentre inoltra il flusso, `ts.rs` legge PAT e PMT (tipo di stream,
+  descrittori AC-3/E-AC-3/DTS/AAC, lingua ISO 639, sottotitoli DVB e televideo) e registra le
+  tracce sotto il `sid` casuale che il player mette nell'URL di `/p/` e `/t/`; il comando
+  `get_stream_tracks(sid)` le restituisce. L'ordine è quello della PMT, lo stesso di ffmpeg:
+  scegliendo un'altra traccia dal pulsante "Audio e sottotitoli" il percorso ffmpeg riparte con
+  `-map 0:a:N` (audio copiato se è AAC/MP3, altrimenti convertito in AAC) e la scelta resta
+  ricordata per il canale. I sottotitoli DVB e il televideo sono immagini: elencati come non
+  disponibili.
+- **Film ed episodi**: prima dell'avvio ffprobe elenca tutte le tracce (indice, codec, lingua,
+  titolo, canali): lingua audio e sottotitoli preferite si applicano senza riavvii. Cambiare
+  traccia audio riavvia ffmpeg dal punto attuale (gli MP4 compatibili restano in lettura diretta
+  sulla prima traccia).
+- **Sottotitoli testuali** (SRT, ASS, mov_text, WebVTT): li estrae in WebVTT lo stesso processo
+  ffmpeg che converte il film (`subs=` nel percorso `/t/`, uscite su socket locali), quindi
+  nessuna connessione in più al provider (molti account ne hanno una sola) e tempi già allineati
+  dopo un seek; il percorso `/s/{token}?u=..&i=N&ss=..&sid=..` li passa al `<track>` man mano che
+  arrivano. Senza `sid`, `/s/` avvia un'estrazione separata (usata per gli MP4 in lettura diretta
+  quando l'account ha più connessioni). Il `<track>` si aggiunge a riproduzione avviata: aggiunto
+  prima, bloccherebbe il video finché il file non è completo. I sottotitoli a immagine (PGS, DVD,
+  DVB) andrebbero bruciati nel video: non disponibili.
+- **Audio 5.1**: con "Stereo" l'audio convertito esce in stereo (192 kbit/s); con "Originale" una
+  sorgente multicanale resta 5.1 (`-ac 6 -b:a 384k`; nei live, dove i canali non sono noti
+  prima, `aformat=channel_layouts=5.1|stereo`). L'audio AAC copiato mantiene sempre i suoi canali.
+- **Qualità della conversione video** (`q=` nel percorso `/t/`): Veloce / Bilanciata / Alta =
+  NVENC p1+ull cq 25 / p3+ll cq 22 / p5+ll cq 20; QSV veryfast/faster/medium con
+  global_quality 25/22/20; AMF speed/balanced/quality; libx264 ultrafast/superfast/veryfast con
+  crf 25/22/20. Il rilevamento dell'encoder prova la qualità Bilanciata.
+- **Download sospeso dei film convertiti**: con molto buffer avanti mpegts.js chiude la richiesta
+  `/t/` e poi la riapre con `Range: bytes=N-`. Il proxy tiene in attesa il processo ffmpeg (fino a
+  10 minuti) con gli ultimi 16 MB prodotti e riprende dallo stesso byte, senza ricominciare dal
+  punto del seek; l'attesa si chiude appena serve la connessione (nuovo stream, analisi, player
+  esterno, stop).

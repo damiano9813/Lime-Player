@@ -87,6 +87,19 @@
   .menu-opt.on { color: var(--ink); font-weight: 700; }
   .menu-opt.on .chk { visibility: visible; }
   .menu-opt small { margin-left: auto; color: var(--ink-subtle); font-size: 11px; font-weight: 500; }
+  .menu-opt:disabled { opacity: .55; cursor: not-allowed; }
+  .menu-opt:disabled:hover { background: transparent; color: var(--ink-muted); }
+  .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; padding: 4px; background: var(--surface-0); border: 1px solid var(--line); border-radius: 8px; flex-shrink: 0; }
+  .seg button { height: 30px; padding: 0 .6rem; border-radius: 6px; font-size: 13px; font-weight: 700; color: var(--ink-muted); white-space: nowrap; transition: background-color .15s, color .15s; }
+  .seg button small { font-size: 11px; font-weight: 500; opacity: .75; }
+  .seg button:hover { background: var(--surface-300); color: var(--ink); }
+  .seg button.on { background: var(--ink); color: var(--surface-100); }
+  .set-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+  .set-help { display: block; font-size: 12px; color: var(--ink-subtle); margin-top: 2px; }
+  video::cue { font-family: inherit; font-size: 1.05em; line-height: 1.35; color: #fff; background: rgba(0, 0, 0, .62); }
+  /* con i controlli visibili i sottotitoli salgono sopra la barra */
+  #video::-webkit-media-text-track-container { transition: transform .3s; }
+  #player-wrap:not(.idle) #video::-webkit-media-text-track-container { transform: translateY(-4.5rem); }
   .glass { background: var(--glass); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); border: 1px solid var(--glass-line); }
   .spin { animation: spin 0.9s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
@@ -94,8 +107,8 @@
   #toast.show { animation: toast-in .18s ease-out; }
   @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
   @keyframes pop-in { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: none; } }
-  #modal:not(.hidden) { animation: fade-in .15s ease-out; }
-  #modal:not(.hidden) .modal-card { animation: pop-in .15s ease-out; }
+  #modal:not(.hidden), #settings-panel:not(.hidden) { animation: fade-in .15s ease-out; }
+  #modal:not(.hidden) .modal-card, #settings-panel:not(.hidden) .modal-card { animation: pop-in .15s ease-out; }
   @media (prefers-reduced-motion: reduce) { .spin, .eq i, .badge-dot, .animate-pulse { animation: none !important; } }
   /* il JS mostra e nasconde con "hidden": deve vincere sul display dei componenti qui sopra */
   .hidden { display: none !important; }
@@ -159,6 +172,9 @@
           <svg class="w-4 h-4 text-on-accent" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11.04-6.86a1 1 0 0 0 0-1.72L9.5 4.28A1 1 0 0 0 8 5.14z"/></svg>
         </div>
         <span class="font-extrabold tracking-tight flex-1">Xtream Player</span>
+        <button id="settings-btn" class="icon-btn" title="Impostazioni" aria-label="Impostazioni">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
         <button id="help-btn" class="icon-btn" title="Scorciatoie da tastiera (?)" aria-label="Scorciatoie da tastiera">
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg>
         </button>
@@ -241,7 +257,7 @@
   <main class="flex-1 min-w-0 flex flex-col min-h-0">
     <div class="flex-1 min-h-0 overflow-y-auto p-5 space-y-4">
       <div id="player-wrap" class="relative w-full aspect-video max-h-[72vh] bg-s0 rounded-xl overflow-hidden border border-line select-none">
-        <video id="video" class="w-full h-full bg-black" playsinline preload="auto"></video>
+        <video id="video" class="w-full h-full bg-black" playsinline preload="auto" crossorigin="anonymous"></video>
 
         <div id="player-empty" class="absolute inset-0 flex flex-col items-center justify-center gap-5 p-6 text-center bg-[radial-gradient(ellipse_at_center,rgba(245,165,36,0.07),transparent_60%)]">
           <div class="w-16 h-16 rounded-2xl bg-s3 border border-line flex items-center justify-center text-accent">
@@ -281,17 +297,7 @@
           </div>
         </div>
 
-        <div id="settings-menu" class="glass hidden absolute right-3 bottom-16 z-30 w-64 max-h-[calc(100%-5rem)] overflow-y-auto rounded-xl shadow-pop p-2 text-sm" role="menu">
-          <p class="overline px-2 py-1">Buffer canali live</p>
-          <button class="menu-opt" data-lat="min" role="menuitemradio"><svg class="chk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>Latenza minima<small>~1 s</small></button>
-          <button class="menu-opt" data-lat="bal" role="menuitemradio"><svg class="chk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>Bilanciata<small>~2,5 s</small></button>
-          <button class="menu-opt" data-lat="stable" role="menuitemradio"><svg class="chk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>Stabile<small>~5 s</small></button>
-          <div class="h-px bg-glass-line my-2"></div>
-          <p class="overline px-2 py-1">Modalità stream live</p>
-          <button class="menu-opt" data-fmt="ts" role="menuitemradio"><svg class="chk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>Auto (MPEG-TS)</button>
-          <button class="menu-opt" data-fmt="m3u8" role="menuitemradio"><svg class="chk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>HLS</button>
-          <button class="menu-opt" data-fmt="ffmpeg" role="menuitemradio"><svg class="chk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>Forza ffmpeg<small>converte l'audio</small></button>
-        </div>
+        <div id="tracks-menu" class="glass hidden absolute right-3 bottom-16 z-30 w-80 max-h-[calc(100%-5rem)] overflow-y-auto rounded-xl shadow-pop p-2 text-sm" role="menu" aria-label="Audio e sottotitoli"></div>
 
         <div id="controls" class="absolute inset-x-0 bottom-0 px-4 pb-3 pt-10 bg-gradient-to-t from-black/90 via-black/50 to-transparent transition-opacity duration-300">
           <div id="seek-row" class="hidden relative mb-1">
@@ -320,8 +326,8 @@
             <span id="time" class="text-xs font-semibold tabular-nums text-ink-muted ml-2 whitespace-nowrap"></span>
             <span id="live-badge" class="hidden badge badge-live ml-2"><span class="badge-dot"></span>Live</span>
             <div class="flex-1"></div>
-            <button id="btn-settings" class="vbtn hidden" title="Impostazioni stream live" aria-label="Impostazioni stream live" aria-haspopup="menu" aria-expanded="false">
-              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            <button id="btn-tracks" class="vbtn hidden" title="Audio e sottotitoli" aria-label="Audio e sottotitoli" aria-haspopup="menu" aria-expanded="false">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 15h4M13 15h5M6 11h8M16.5 11h1.5"/></svg>
             </button>
             <button id="btn-reload" class="vbtn" title="Ricarica stream (R)" aria-label="Ricarica stream">
               <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
@@ -408,6 +414,79 @@
     <h2 id="modal-title" class="text-base font-bold mb-3"></h2>
     <div id="modal-body" class="text-sm text-ink-muted"></div>
     <div id="modal-actions" class="flex justify-end gap-2 mt-5"></div>
+  </div>
+</div>
+
+<!-- Impostazioni: buffer e modalità live, audio, qualità, lingue, player esterno, cache, ffmpeg -->
+<div id="settings-panel" class="hidden fixed inset-0 z-40 bg-scrim backdrop-blur-sm flex items-center justify-center p-6" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+  <div class="modal-card w-full max-w-xl max-h-full flex flex-col bg-s2 border border-line rounded-2xl shadow-pop">
+    <div class="flex items-center gap-2 px-5 pt-4 pb-3 border-b border-line">
+      <h2 id="settings-title" class="text-base font-bold flex-1">Impostazioni</h2>
+      <button id="settings-close" class="icon-btn" title="Chiudi (Esc)" aria-label="Chiudi impostazioni">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="overflow-y-auto px-5 py-4 space-y-5 text-sm">
+      <section class="space-y-3">
+        <p class="overline">Canali live</p>
+        <div class="set-row">
+          <div><p class="font-bold text-ink">Buffer</p><p class="set-help">Cresce da solo se ci sono scatti.</p></div>
+          <div class="seg" data-setting="lat" role="radiogroup" aria-label="Buffer canali live">
+            <button data-v="min" role="radio">Minimo <small>~1 s</small></button><button data-v="bal" role="radio">Medio <small>~2,5 s</small></button><button data-v="stable" role="radio">Stabile <small>~5 s</small></button>
+          </div>
+        </div>
+        <div class="set-row">
+          <div><p class="font-bold text-ink">Modalità stream</p><p class="set-help">"Forza ffmpeg" converte sempre l'audio.</p></div>
+          <div class="seg" data-setting="fmt" role="radiogroup" aria-label="Modalità stream live">
+            <button data-v="ts" role="radio">Auto</button><button data-v="m3u8" role="radio">HLS</button><button data-v="ffmpeg" role="radio">ffmpeg</button>
+          </div>
+        </div>
+      </section>
+      <div class="h-px bg-line"></div>
+      <section class="space-y-3">
+        <p class="overline">Audio e sottotitoli</p>
+        <div class="set-row">
+          <div><p class="font-bold text-ink">Uscita audio</p><p class="set-help">Con "Originale" l'audio 5.1 convertito resta 5.1.</p></div>
+          <div class="seg" data-setting="audioOut" role="radiogroup" aria-label="Uscita audio">
+            <button data-v="stereo" role="radio">Stereo</button><button data-v="orig" role="radio">Originale</button>
+          </div>
+        </div>
+        <div class="set-row">
+          <label for="set-audio-lang"><span class="block font-bold text-ink">Lingua audio preferita</span><span class="set-help">Scelta in automatico se il canale o il film la offre.</span></label>
+          <select id="set-audio-lang" class="field field-sm !w-48"></select>
+        </div>
+        <div class="set-row">
+          <label for="set-sub-lang"><span class="block font-bold text-ink">Sottotitoli</span><span class="set-help">Attivati in automatico nei film, se testuali.</span></label>
+          <select id="set-sub-lang" class="field field-sm !w-48"></select>
+        </div>
+      </section>
+      <div class="h-px bg-line"></div>
+      <section class="space-y-3">
+        <p class="overline">Conversione video</p>
+        <div class="set-row">
+          <div><p class="font-bold text-ink">Qualità</p><p class="set-help">Veloce avvia prima, Alta usa più GPU/CPU.</p></div>
+          <div class="seg" data-setting="quality" role="radiogroup" aria-label="Qualità conversione">
+            <button data-v="fast" role="radio">Veloce</button><button data-v="bal" role="radio">Bilanciata</button><button data-v="high" role="radio">Alta</button>
+          </div>
+        </div>
+        <div id="set-ffmpeg" class="text-xs text-ink-muted bg-s1 border border-line rounded-lg px-3 py-2"></div>
+        <button id="set-redetect" class="btn btn-ghost btn-sm">Rileva di nuovo ffmpeg ed encoder</button>
+      </section>
+      <div class="h-px bg-line"></div>
+      <section class="space-y-3">
+        <p class="overline">Altro</p>
+        <div class="set-row">
+          <div><p class="font-bold text-ink">Player esterno</p><p class="set-help">Usato da "Apri in MPV/VLC".</p></div>
+          <div class="seg" data-setting="external" role="radiogroup" aria-label="Player esterno preferito">
+            <button data-v="auto" role="radio">Automatico</button><button data-v="mpv" role="radio">mpv</button><button data-v="vlc" role="radio">VLC</button>
+          </div>
+        </div>
+        <div class="set-row">
+          <div><p class="font-bold text-ink">Cache delle liste</p><p class="set-help">Categorie e liste salvate su questo PC.</p></div>
+          <button id="set-clear-cache" class="btn btn-secondary btn-sm">Svuota cache liste</button>
+        </div>
+      </section>
+    </div>
   </div>
 </div>
 

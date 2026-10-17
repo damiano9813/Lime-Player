@@ -1,4 +1,4 @@
-// Controlli del player, menu impostazioni e azioni del pannello info.
+// Controlli del player, menu tracce, pannello Impostazioni e azioni del pannello info.
 'use strict';
 
 // ------------------------------------------------------------------ controlli custom
@@ -108,50 +108,158 @@ seek.addEventListener('mousemove', (ev) => {
 });
 seek.addEventListener('mouseleave', () => $('seek-tip').classList.add('hidden'));
 
-// --- menu impostazioni live (buffer e modalità stream) ---
-function updateSettingsMenu() {
-  document.querySelectorAll('#settings-menu [data-lat]').forEach((b) => {
-    b.classList.toggle('on', b.dataset.lat === L.mode); b.setAttribute('aria-checked', String(b.dataset.lat === L.mode));
-  });
-  document.querySelectorAll('#settings-menu [data-fmt]').forEach((b) => {
-    b.classList.toggle('on', b.dataset.fmt === S.liveFormat); b.setAttribute('aria-checked', String(b.dataset.fmt === S.liveFormat));
-  });
+/// --- menu rapido nel player: traccia audio e sottotitoli ---
+const CHECK = '<svg class="chk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>';
+function trackOpt(attrs, label, on, note, disabled) {
+  return `<button class="menu-opt${on ? ' on' : ''}" role="menuitemradio" aria-checked="${on}" ${attrs}${disabled ? ' disabled' : ''}>${CHECK}<span class="truncate">${escapeHtml(label)}</span>${note ? `<small>${escapeHtml(note)}</small>` : ''}</button>`;
 }
-const settingsOpen = () => !$('settings-menu').classList.contains('hidden');
-function closeSettings() {
-  $('settings-menu').classList.add('hidden');
-  $('btn-settings').setAttribute('aria-expanded', 'false');
+function renderTracksMenu() {
+  const menu = $('tracks-menu');
+  const t = P.tracks, live = S.currentMode === 'live';
+  const waiting = live ? 'Lettura delle tracce dallo stream…' : (S.caps.ffprobe ? 'Analisi delle tracce del file…' : 'Elenco delle tracce non disponibile senza ffmpeg');
+  const empty = t.from === 'hls' ? 'Non disponibile in HLS: scegli "Auto" nelle impostazioni'
+    : t.from === 'none' ? 'Elenco delle tracce non disponibile' : t.from ? 'Nessuna traccia' : waiting;
+  const listed = t.from === 'ts' || t.from === 'probe';
+  const note = (msg) => `<p class="px-2 py-1 text-xs text-ink-subtle">${escapeHtml(msg)}</p>`;
+  let html = '<p class="overline px-2 py-1">Audio</p>';
+  if (t.audio.length) {
+    const cur = currentAudioIndex();
+    html += t.audio.map((a, i) => trackOpt(`data-audio="${i}"`, XPCore.trackLabel(a), a.index === cur, '', false)).join('');
+  } else html += note(listed ? 'Nessuna traccia audio' : empty);
+  html += '<div class="h-px bg-glass-line my-2"></div><p class="overline px-2 py-1">Sottotitoli</p>';
+  html += trackOpt('data-sub="-1"', 'Disattivati', P.subIndex < 0, '', false);
+  if (t.subs.length) {
+    html += t.subs.map((s, i) => {
+      // i sottotitoli a immagine (DVB, PGS, DVD) e quelli dei live non si possono mostrare
+      const ok = s.text && !live;
+      return trackOpt(`data-sub="${i}"`, XPCore.trackLabel(s), P.subIndex === i, ok ? '' : (s.text ? 'solo film' : 'immagine, non disponibile'), !ok);
+    }).join('');
+  } else if (!listed) html += note(empty);
+  html += `<div class="h-px bg-glass-line my-2"></div><button class="menu-opt" data-open-settings>${ICONS.gear}<span>Impostazioni…</span></button>`;
+  menu.innerHTML = html;
 }
-$('btn-settings').addEventListener('click', (ev) => {
+const tracksMenuOpen = () => !$('tracks-menu').classList.contains('hidden');
+function closeTracksMenu() {
+  $('tracks-menu').classList.add('hidden');
+  $('btn-tracks').setAttribute('aria-expanded', 'false');
+}
+$('btn-tracks').addEventListener('click', (ev) => {
   ev.stopPropagation();
-  if (settingsOpen()) { closeSettings(); return; }
-  updateSettingsMenu();
-  $('settings-menu').classList.remove('hidden');
-  $('btn-settings').setAttribute('aria-expanded', 'true');
+  if (tracksMenuOpen()) { closeTracksMenu(); return; }
+  renderTracksMenu();
+  $('tracks-menu').classList.remove('hidden');
+  $('btn-tracks').setAttribute('aria-expanded', 'true');
   poke();
 });
 document.addEventListener('click', (ev) => {
-  if (settingsOpen() && !$('settings-menu').contains(ev.target)) closeSettings();
+  if (tracksMenuOpen() && !$('tracks-menu').contains(ev.target)) closeTracksMenu();
 });
-$('settings-menu').addEventListener('click', (ev) => {
+$('tracks-menu').addEventListener('click', (ev) => {
   const b = ev.target.closest('.menu-opt');
+  if (!b || b.disabled) return;
+  closeTracksMenu();
+  if (b.hasAttribute('data-open-settings')) { openSettings(); return; }
+  if (b.dataset.audio != null) selectAudio(P.tracks.audio[+b.dataset.audio], false);
+  else if (b.dataset.sub != null) {
+    const i = +b.dataset.sub;
+    if (i !== P.subIndex) { setSubtitle(i); toast(i < 0 ? 'Sottotitoli disattivati' : 'Sottotitoli: ' + XPCore.trackLabel(P.tracks.subs[i])); }
+  }
+});
+
+// --- pannello Impostazioni (finestra modale) ---
+const settingsPanelOpen = () => !$('settings-panel').classList.contains('hidden');
+let settingsReturnFocus = null;
+function saveSettings() { lsSet('xp.settings', S.settings); }
+function fillLangSelect(sel, value, noneLabel) {
+  const codes = XPCore.PREFERRED_LANGS.includes(value) || !value ? XPCore.PREFERRED_LANGS : [value, ...XPCore.PREFERRED_LANGS];
+  sel.innerHTML = `<option value="">${escapeHtml(noneLabel)}</option>` +
+    codes.map((c) => `<option value="${c}">${escapeHtml(XPCore.langName(c))}</option>`).join('');
+  sel.value = value || '';
+}
+function renderSettings() {
+  const st = S.settings;
+  const segValue = { lat: L.mode, fmt: S.liveFormat, audioOut: st.audioOut, quality: st.quality, external: st.external };
+  document.querySelectorAll('#settings-panel .seg').forEach((g) => {
+    g.querySelectorAll('button').forEach((b) => {
+      const on = b.dataset.v === segValue[g.dataset.setting];
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-checked', String(on));
+    });
+  });
+  fillLangSelect($('set-audio-lang'), st.audioLang, 'Nessuna preferenza');
+  fillLangSelect($('set-sub-lang'), st.subLang, 'Disattivati');
+  const c = S.caps || {};
+  $('set-ffmpeg').innerHTML = c.ffmpeg
+    ? `<span class="text-success font-bold">ffmpeg attivo</span> · encoder video <span class="text-ink font-bold">${escapeHtml(c.h264_encoder || 'software')}</span>
+       <span class="block text-ink-subtle font-mono text-[11px] truncate mt-1" title="${escapeHtml(c.ffmpeg)}">${escapeHtml(c.version || c.ffmpeg)}</span>`
+    : '<span class="text-accent-ink font-bold">ffmpeg non trovato</span>: AC3/DTS/HEVC/MPEG-2, cambio traccia audio e sottotitoli non disponibili. Installa con <span class="font-mono">winget install Gyan.FFmpeg</span> e riavvia l\'app.';
+}
+function openSettings() {
+  closeTracksMenu();
+  settingsReturnFocus = document.activeElement;
+  renderSettings();
+  $('settings-panel').classList.remove('hidden');
+  $('settings-close').focus();
+}
+function closeSettings() {
+  if (!settingsPanelOpen()) return;
+  $('settings-panel').classList.add('hidden');
+  if (settingsReturnFocus && settingsReturnFocus.focus) settingsReturnFocus.focus();
+}
+// le scelte che cambiano la conversione si applicano subito allo stream in corso
+function restartIfTranscoding() {
+  if (!S.current || P.route.mode !== 'transcode') return;
+  if (S.currentMode === 'vod') playItem(S.current, 'vod', { keepRetries: true, route: P.route, ss: currentPlayTime(), duration: currentDuration() });
+  else playItem(S.current, 'live', { keepRetries: true, route: P.route, fmt: P.fmt });
+}
+$('settings-btn').addEventListener('click', openSettings);
+$('settings-close').addEventListener('click', closeSettings);
+$('settings-panel').addEventListener('click', (ev) => { if (ev.target === $('settings-panel')) closeSettings(); });
+$('settings-panel').addEventListener('click', (ev) => {
+  const b = ev.target.closest('.seg button');
   if (!b) return;
-  if (b.dataset.fmt) {
-    S.liveFormat = ['ts', 'm3u8', 'ffmpeg'].includes(b.dataset.fmt) ? b.dataset.fmt : 'ts';
-    lsSet('xp.liveFormat', S.liveFormat);
-    if (S.liveFormat === 'ffmpeg' && !S.caps.ffmpeg) toast('ffmpeg non trovato: installalo con "winget install Gyan.FFmpeg" e riavvia l\'app', 'error');
-    if (S.current && S.currentMode === 'live') playItem(S.current, 'live');
-  } else if (b.dataset.lat) {
-    L.mode = LAT_PRESETS[b.dataset.lat] ? b.dataset.lat : 'min';
+  const key = b.closest('.seg').dataset.setting, v = b.dataset.v;
+  if (key === 'lat') {
+    L.mode = LAT_PRESETS[v] ? v : 'min';
     lsSet('xp.latMode', L.mode);
     latLoad();
     if (S.current && S.currentMode === 'live' && P.hls) playItem(S.current, 'live');
     updateLatencyUi(true);
+  } else if (key === 'fmt') {
+    S.liveFormat = ['ts', 'm3u8', 'ffmpeg'].includes(v) ? v : 'ts';
+    lsSet('xp.liveFormat', S.liveFormat);
+    if (S.liveFormat === 'ffmpeg' && !S.caps.ffmpeg) toast('ffmpeg non trovato: installalo con "winget install Gyan.FFmpeg" e riavvia l\'app', 'error');
+    if (S.current && S.currentMode === 'live') playItem(S.current, 'live');
+  } else if (key in S.settings) {
+    if (S.settings[key] === v) return;
+    S.settings = XPCore.normalizeSettings({ ...S.settings, [key]: v });
+    saveSettings();
+    if (key === 'audioOut' || key === 'quality') restartIfTranscoding();
   }
-  updateSettingsMenu();
-  closeSettings();
+  renderSettings();
 });
-
+['set-audio-lang', 'set-sub-lang'].forEach((id) => $(id).addEventListener('change', (ev) => {
+  const key = id === 'set-audio-lang' ? 'audioLang' : 'subLang';
+  S.settings = XPCore.normalizeSettings({ ...S.settings, [key]: ev.target.value });
+  saveSettings();
+  toast(key === 'audioLang' ? 'Lingua audio preferita: ' + (S.settings.audioLang ? XPCore.langName(S.settings.audioLang) : 'nessuna') : 'Sottotitoli: ' + (S.settings.subLang ? XPCore.langName(S.settings.subLang) : 'disattivati'), 'ok');
+}));
+$('set-clear-cache').addEventListener('click', async () => {
+  try {
+    await invoke('clear_list_cache');
+    S.listAge.clear();
+    toast('Cache delle liste svuotata: al prossimo avvio si riscaricano dal server', 'ok');
+  } catch (e) { toast(errText(e), 'error'); }
+});
+$('set-redetect').addEventListener('click', async () => {
+  const b = $('set-redetect');
+  b.disabled = true;
+  $('set-ffmpeg').textContent = 'Rilevamento di ffmpeg e prova degli encoder…';
+  try { S.caps = await invoke('get_media_capabilities', { refresh: true }); } catch (e) { toast(errText(e), 'error'); }
+  b.disabled = false;
+  renderCaps();
+  renderSettings();
+});
 $('btn-reload').addEventListener('click', () => { if (S.current) playItem(S.current, S.currentMode); });
 $('btn-pip').addEventListener('click', togglePip);
 $('btn-theater').addEventListener('click', () => setTheater(!theaterOn()));
@@ -163,7 +271,7 @@ $('btn-fwd10').addEventListener('click', () => seekBy(10));
 video.addEventListener('click', togglePlay);
 video.addEventListener('dblclick', toggleFullscreen);
 wrap.addEventListener('wheel', (ev) => {
-  if (!S.current || ev.target.closest('#settings-menu')) return;
+  if (!S.current || ev.target.closest('#tracks-menu')) return;
   ev.preventDefault();
   changeVolume(ev.deltaY < 0 ? 0.05 : -0.05);
 }, { passive: false });
@@ -174,10 +282,10 @@ let idleTimer = null;
 function poke() {
   wrap.classList.remove('idle');
   clearTimeout(idleTimer);
-  idleTimer = setTimeout(() => { if (!video.paused && S.current && !settingsOpen()) wrap.classList.add('idle'); }, 3000);
+  idleTimer = setTimeout(() => { if (!video.paused && S.current && !tracksMenuOpen()) wrap.classList.add('idle'); }, 3000);
 }
 wrap.addEventListener('mousemove', poke);
-wrap.addEventListener('mouseleave', () => { if (!video.paused && S.current && !settingsOpen()) wrap.classList.add('idle'); });
+wrap.addEventListener('mouseleave', () => { if (!video.paused && S.current && !tracksMenuOpen()) wrap.classList.add('idle'); });
 video.addEventListener('pause', () => wrap.classList.remove('idle'));
 
 // ------------------------------------------------------------------ azioni info
@@ -190,7 +298,7 @@ async function openExternal() {
     const resumeAt = mode === 'vod' ? currentPlayTime() : 0;
     destroyPlayer();
     setSpinner(false); hideError();
-    const used = await invoke('open_in_external_player', { streamUrl: url, title: item.name, live: mode === 'live' });
+    const used = await invoke('open_in_external_player', { streamUrl: url, title: item.name, live: mode === 'live', prefer: S.settings.external });
     setStatus(`Aperto in ${used}` + (resumeAt > 5 ? ` (eri a ${fmtTime(resumeAt)})` : ''));
     toast(`Stream aperto in ${used}`, 'ok');
     updatePlayButton();

@@ -8,6 +8,10 @@ const P = {
   lastTime: 0, stallTicks: 0, fmt: 'ts', mediaInfo: null, hadPlaying: false,
   route: { mode: 'direct', v: 'copy', a: 'copy' },
   vodTranscoded: false, vodOffset: 0, vodDuration: NaN,
+  // tracce del contenuto: dalla PMT (live, sessione `sid`) o da ffprobe (film ed episodi)
+  sid: '', tracksTimer: null, tracks: { from: '', audio: [], subs: [] }, probe: null, subIndex: -1, autoTracks: false,
+  // tracce di sottotitoli che il processo ffmpeg del film in corso sta estraendo
+  sessionSubs: [], prefAudio: 0, resumeRetryAt: 0,
 };
 S.caps = { ffmpeg: null, ffprobe: null, h264_encoder: null, version: '' };
 
@@ -19,7 +23,9 @@ function resumeKey(item) {
   return (item._kind === 'episode' ? 'xp.resume.ep.' : 'xp.resume.') + item.stream_id;
 }
 function proxied(url, opts) { return XPCore.proxyUrl(S.proxy, url, opts); }
-function transcodeUrl(url, r, opts) { return XPCore.transcodeUrl(S.proxy, url, r, opts); }
+// qualità e uscita audio vengono dalle impostazioni
+function transcodeUrl(url, r, opts) { return XPCore.transcodeUrl(S.proxy, url, r, { q: S.settings.quality, ac: S.settings.audioOut, ...opts }); }
+const newSid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 
 // --- supporto codec di WebView2 (MSE) ---
 const mseOk = (t) => { try { return !!window.MediaSource && MediaSource.isTypeSupported(t); } catch { return false; } };
@@ -29,16 +35,125 @@ function mseVideoOk(codec) { return !codec || mseOk(`video/mp4; codecs="${codec}
 function mseAudioOk(codec) { return !codec || mseOk(XPCore.audioMime(codec)); }
 // cosa si può copiare senza conversione (decisione in XPCore, con i codec che WebView2 supporta)
 function probeVideoOk(info) { return XPCore.probeVideoOk(info, { hevc: HEVC_OK, hevc10: HEVC10_OK }); }
-function probeAudioOk(info) { return XPCore.probeAudioOk(info, mseOk('audio/mp4; codecs="opus"')); }
+const OPUS_OK = mseOk('audio/mp4; codecs="opus"');
+function probeAudioOk(info) { return XPCore.probeAudioOk(info, OPUS_OK); }
+// percorso di un film analizzato con ffprobe, con la traccia audio `at` (indice tra le tracce audio)
+function vodRouteFor(info, at) {
+  const v = probeVideoOk(info) ? 'copy' : 'h264';
+  const t = info.audio && info.audio[at];
+  if (!t) return { mode: 'transcode', v, a: probeAudioOk(info) ? 'copy' : 'aac' };
+  return XPCore.audioTrackRoute({ mode: 'transcode', v }, t, { opusOk: OPUS_OK, forceTranscode: true });
+}
 async function probeRoute(url) {
   const info = await invoke('probe_stream', { streamUrl: url });
-  return { info, route: { mode: 'transcode', v: probeVideoOk(info) ? 'copy' : 'h264', a: probeAudioOk(info) ? 'copy' : 'aac' } };
+  return { info, route: vodRouteFor(info, 0) };
 }
 
 // --- percorso di conversione memorizzato per canale ---
 const routeKey = (id) => 'xp.route.' + id;
 function getSavedRoute(id) { return XPCore.normalizeSavedRoute(lsGet(routeKey(id), null)); }
-function saveRoute(id, r) { lsSet(routeKey(id), { v: r.v, a: r.a, t: Date.now() }); }
+function saveRoute(id, r) { lsSet(routeKey(id), { v: r.v, a: r.a, at: r.at || 0, t: Date.now() }); }
+
+// --- tracce audio e sottotitoli ---
+const currentAudioIndex = () => (P.route.mode === 'transcode' && P.route.at > 0 ? P.route.at : 0);
+function resetTracks() {
+  clearInterval(P.tracksTimer); P.tracksTimer = null;
+  P.tracks = { from: '', audio: [], subs: [] };
+  P.probe = null; P.subIndex = -1; P.autoTracks = false; P.prefAudio = 0;
+}
+// le tracce di un film vengono da ffprobe (stesso ordine di -map 0:a:N e 0:s:N)
+function setProbeTracks(info) {
+  P.probe = info;
+  P.tracks = { from: 'probe', audio: info.audio || [], subs: info.subtitles || [] };
+  renderTracksMenu();
+}
+// live: il backend legge la PMT mentre inoltra il flusso; si chiede l'elenco finché non arriva
+function watchLiveTracks(item, sid) {
+  clearInterval(P.tracksTimer);
+  let tries = 0, busy = false;
+  P.tracksTimer = setInterval(async () => {
+    if (S.current !== item || P.sid !== sid || ++tries > 30) { clearInterval(P.tracksTimer); P.tracksTimer = null; return; }
+    if (busy) return;
+    busy = true;
+    let list = null;
+    try { list = await invoke('get_stream_tracks', { sid }); } catch { list = null; }
+    busy = false;
+    if (!list || S.current !== item || P.sid !== sid) return;
+    clearInterval(P.tracksTimer); P.tracksTimer = null;
+    P.tracks = { from: 'ts', audio: list.filter((t) => t.kind === 'audio'), subs: list.filter((t) => t.kind === 'subtitle') };
+    renderTracksMenu();
+    applyPreferredTracks(item);
+  }, 500);
+}
+// lingua preferita: si applica una volta per contenuto, poi decide l'utente
+function applyPreferredTracks(item) {
+  if (P.autoTracks || S.current !== item) return;
+  P.autoTracks = true;
+  const sub = XPCore.pickTrack(P.tracks.subs, S.settings.subLang, true);
+  if (sub >= 0 && S.currentMode === 'vod' && P.subIndex < 0) setSubtitle(sub);
+  const a = XPCore.pickTrack(P.tracks.audio, S.settings.audioLang);
+  if (a >= 0 && P.tracks.audio[a].index !== currentAudioIndex() && S.caps.ffmpeg) selectAudio(P.tracks.audio[a], true);
+}
+function selectAudio(track, auto) {
+  const item = S.current, mode = S.currentMode;
+  if (!item || !track || track.index === currentAudioIndex()) return;
+  if (!S.caps.ffmpeg) { toast('Per cambiare traccia audio serve ffmpeg (winget install Gyan.FFmpeg)', 'error'); return; }
+  const route = XPCore.audioTrackRoute(P.route, track, { opusOk: OPUS_OK, forceTranscode: mode === 'vod' && P.vodTranscoded });
+  toast(`${auto ? 'Lingua preferita' : 'Audio'}: ${XPCore.trackLabel(track)}`);
+  const forced = route.mode === 'transcode' ? route : null;
+  if (mode === 'live') {
+    // la scelta resta per il canale: il prossimo avvio parte già con questa traccia
+    if (forced) saveRoute(item.stream_id, route); else lsDel(routeKey(item.stream_id));
+    playItem(item, 'live', { keepRetries: true, route: forced, fmt: P.fmt === 'm3u8' ? 'ts' : P.fmt });
+  } else {
+    P.prefAudio = track.index;
+    playItem(item, 'vod', { keepRetries: true, route: forced, ss: currentPlayTime(), duration: currentDuration() });
+  }
+}
+// Sottotitoli testuali in WebVTT. Film convertiti: il testo esce dallo stesso ffmpeg del video
+// (sessione P.sid), con i tempi già allineati e senza connessioni in più al provider. Film letti
+// direttamente: estrazione separata se l'account ha più connessioni, altrimenti il film si riapre
+// con ffmpeg (remux, senza perdita) dal punto attuale.
+function clearSubtitleElements() { video.querySelectorAll('track').forEach((t) => t.remove()); }
+const textSubIndices = () => P.tracks.subs.filter((t) => t.text).map((t) => t.index);
+const maxConnections = () => parseInt(S.account && S.account.max_connections, 10) || 1;
+function setSubtitle(idx) {
+  const t = idx >= 0 ? P.tracks.subs[idx] : null;
+  if (t && (!t.text || S.currentMode !== 'vod')) return;
+  P.subIndex = t ? idx : -1;
+  clearSubtitleElements();
+  renderTracksMenu();
+  if (!t || !S.proxy || !S.currentUrl) return;
+  let src = '';
+  if (P.vodTranscoded && P.sid && P.sessionSubs.includes(t.index)) {
+    src = XPCore.subtitleUrl(S.proxy, S.currentUrl, t.index, P.vodOffset, P.sid);
+  } else if (!P.vodTranscoded && maxConnections() > 1) {
+    src = XPCore.subtitleUrl(S.proxy, S.currentUrl, t.index, 0);
+  } else if (S.caps.ffmpeg && P.probe) {
+    // si riparte da qui con ffmpeg, che estrae anche i sottotitoli
+    const route = P.vodTranscoded ? P.route : vodRouteFor(P.probe, currentAudioIndex());
+    playItem(S.current, 'vod', { keepRetries: true, route, ss: currentPlayTime(), duration: currentDuration() });
+    return;
+  }
+  if (!src) return;
+  // Un <track> aggiunto prima che il video parta blocca la riproduzione finché non è caricato
+  // del tutto (regola HTML delle "pending text tracks"), ma qui il testo arriva per tutta la
+  // durata del film: si aggiunge a riproduzione avviata.
+  const sid = P.sid, url = S.currentUrl;
+  const attach = () => {
+    if (P.subIndex !== idx || P.sid !== sid || S.currentUrl !== url || video.querySelector('track')) return;
+    const el = document.createElement('track');
+    el.kind = 'subtitles';
+    el.label = XPCore.trackLabel(t);
+    el.srclang = XPCore.normLang(t.lang) || 'und';
+    el.src = src;
+    el.addEventListener('error', () => { if (P.subIndex === idx) toast('Sottotitoli non disponibili per questo file', 'error'); }, { once: true });
+    video.appendChild(el);
+    el.track.mode = 'showing';
+  };
+  if (video.readyState >= 3 && !video.paused) attach();
+  else video.addEventListener('playing', attach, { once: true });
+}
 const { mergeRoute } = XPCore;
 function describeRoute(r) { return XPCore.describeRoute(r, S.caps.h264_encoder); }
 
@@ -143,6 +258,11 @@ function destroyPlayer() {
   clearInterval(P.watchdog); P.watchdog = null;
   clearTimeout(P.healthTimer); P.healthTimer = null;
   clearInterval(P.startTimer); P.startTimer = null;
+  clearInterval(P.tracksTimer); P.tracksTimer = null;
+  P.sid = ''; P.sessionSubs = [];
+  clearSubtitleElements();
+  // un film convertito sospeso da mpegts.js tiene la connessione al provider: si chiude
+  invoke('release_stream').catch(() => {});
   latStop();
   if (P.mpegts) {
     const m = P.mpegts; P.mpegts = null;
@@ -209,8 +329,8 @@ function resetPlayerUi() {
   $('info-logo').innerHTML = '';
   ['btn-external', 'btn-copy', 'btn-fav'].forEach((id) => { $(id).disabled = true; });
   $('seek-row').classList.add('hidden'); $('live-badge').classList.add('hidden');
-  ['btn-prev', 'btn-next', 'btn-back10', 'btn-fwd10', 'btn-settings'].forEach((id) => $(id).classList.add('hidden'));
-  closeSettings();
+  ['btn-prev', 'btn-next', 'btn-back10', 'btn-fwd10', 'btn-tracks'].forEach((id) => $(id).classList.add('hidden'));
+  closeTracksMenu();
   showOsdTop(null);
   clearContentInfo();
   $('time').textContent = '';
@@ -246,9 +366,9 @@ function renderInfo(item, mode) {
   ['btn-external', 'btn-copy', 'btn-fav'].forEach((id) => { $(id).disabled = false; });
   $('seek-row').classList.toggle('hidden', mode === 'live');
   $('live-badge').classList.toggle('hidden', mode !== 'live');
-  ['btn-prev', 'btn-next', 'btn-settings'].forEach((id) => $(id).classList.toggle('hidden', mode !== 'live'));
+  ['btn-prev', 'btn-next'].forEach((id) => $(id).classList.toggle('hidden', mode !== 'live'));
   ['btn-back10', 'btn-fwd10'].forEach((id) => $(id).classList.toggle('hidden', mode !== 'vod'));
-  if (mode !== 'live') closeSettings();
+  $('btn-tracks').classList.remove('hidden');
   updateFavButton();
   updateTech();
   renderContentInfo(item, mode);
@@ -302,6 +422,8 @@ function playItem(item, mode, opts) {
   if (!opts.keepRetries && S.current && (S.current.stream_id !== item.stream_id || S.currentMode !== mode)) {
     S.previous = { item: S.current, mode: S.currentMode };
   }
+  // riavvii dello stesso contenuto (conversione, seek, cambio traccia): tracce e sottotitoli restano
+  if (!(opts.keepRetries && S.current === item && S.currentMode === mode)) resetTracks();
   S.current = item;
   S.currentMode = mode;
   if (!opts.keepRetries) P.retries = 0;
@@ -337,22 +459,28 @@ function startLive(item, fmt, forcedRoute) {
     setStatus('Connessione allo stream HLS…');
     if (window.Hls && Hls.isSupported()) startHls(hlsUrl, true);
     else { video.src = proxied(hlsUrl); video.play().catch(() => {}); }
+    P.tracks.from = 'hls';
+    renderTracksMenu();
     startWatchdog();
     return;
   }
   S.currentUrl = tsUrl;
-  let route = forcedRoute || null;
-  if (!route && fmt === 'ffmpeg') route = { mode: 'transcode', v: 'copy', a: 'aac' };
-  if (!route) route = getSavedRoute(item.stream_id);
+  // percorso scelto (conversione, traccia audio) oppure quello ricordato per il canale
+  let route = forcedRoute || getSavedRoute(item.stream_id);
+  if (fmt === 'ffmpeg') route = mergeRoute(route || { v: 'copy', a: 'aac' }, { v: 'copy', a: 'aac' });
   if (route && !S.caps.ffmpeg) route = null;
+  // il proxy legge la PMT del flusso e registra le tracce con questo identificativo
+  const sid = newSid();
+  P.sid = sid;
   if (route) {
     P.route = route;
     setStatus(`Conversione in tempo reale: ${describeRoute(route)}`);
-    startMpegts(transcodeUrl(tsUrl, route, { live: true }), true, item, 'live');
+    startMpegts(transcodeUrl(tsUrl, route, { live: true, sid }), true, item, 'live');
   } else {
     setStatus('Connessione allo stream…');
-    startMpegts(proxied(tsUrl, { live: true }), true, item, 'live');
+    startMpegts(proxied(tsUrl, { live: true, sid }), true, item, 'live');
   }
+  watchLiveTracks(item, sid);
   updateTech();
   startWatchdog();
 }
@@ -448,6 +576,13 @@ function onMpegtsError(item, mode, type, detail, info) {
     if (S.current !== item) return;
     if (mode === 'vod') { destroyPlayer(); showError(`Riproduzione interrotta: ${msg}`); } else onLiveError(msg);
   };
+  // film convertito: se la ripresa del download non riesce (sessione scaduta dopo una lunga
+  // pausa) si riparte dal punto attuale, come con un seek
+  if (mode === 'vod' && P.vodTranscoded && P.hadPlaying && type === mpegts.ErrorTypes.NETWORK_ERROR && Date.now() - P.resumeRetryAt > 30000) {
+    P.resumeRetryAt = Date.now();
+    restartTranscodedAt(currentPlayTime());
+    return;
+  }
   const decodeProblem = type === mpegts.ErrorTypes.MEDIA_ERROR || /MSE|codec|unsupported/i.test(`${detail} ${info && info.msg ? info.msg : ''}`);
   if (decodeProblem) {
     const mi = P.mediaInfo || {};
@@ -554,41 +689,60 @@ async function startVod(item, opts) {
   if (opts.route) { startVodTranscoded(item, url, opts.route, resumeAt, P.vodDuration, false); return; }
   if (ext === 'm3u8' && window.Hls && Hls.isSupported()) { startHls(url, false); return; }
   const native = ['mp4', 'm4v', 'mov', 'webm'].includes(ext);
-  // codec dichiarati dal pannello (episodi, scheda film): si sceglie il percorso senza ffprobe
-  const vodInfo = item._kind || item._catchup ? null : await vodInfoFor(item);
+  // Analisi con ffprobe prima dell'avvio (una connessione alla volta, molti account ne hanno una
+  // sola): codec reali, tracce audio e sottotitoli, lingue preferite applicate senza riavvii.
+  // In parallelo la scheda del film (API, non conta come connessione allo stream).
+  const vodInfoP = item._kind || item._catchup ? Promise.resolve(null) : vodInfoFor(item);
+  let info = P.probe && !P.probe.error ? P.probe : null;
+  if (!info && S.caps.ffprobe) {
+    setStatus('Analisi del file…');
+    try { info = await invoke('probe_stream', { streamUrl: url }); } catch (e) { info = null; P.probe = { error: errText(e) }; }
+  }
+  const vodInfo = await vodInfoP;
   if (S.current !== item) return;
-  const declared = item._codecs || (vodInfo && vodInfo.codecs);
   // durata dalla scheda del film: serve alla barra di avanzamento dei film convertiti
   if (!isFinite(P.vodDuration) && vodInfo && vodInfo.meta.duration_secs > 0) P.vodDuration = vodInfo.meta.duration_secs;
-  if (S.caps.ffmpeg && XPCore.hasCodecs(declared)) {
-    const route = { mode: 'transcode', v: probeVideoOk(declared) ? 'copy' : 'h264', a: probeAudioOk(declared) ? 'copy' : 'aac' };
-    if (!native || route.v !== 'copy' || route.a !== 'copy') {
-      startVodTranscoded(item, url, route, resumeAt, P.vodDuration, resumeAt > 0);
+  if (info) {
+    if (P.probe !== info) setProbeTracks(info);
+    if (!P.autoTracks) {
+      P.autoTracks = true;
+      P.subIndex = XPCore.pickTrack(info.subtitles, S.settings.subLang, true);
+      P.prefAudio = Math.max(0, XPCore.pickTrack(info.audio, S.settings.audioLang));
+    }
+    const route = vodRouteFor(info, P.prefAudio || 0);
+    // MP4 compatibile, prima traccia audio e niente sottotitoli: lettura diretta dal tag video
+    const direct = native && route.v === 'copy' && route.a === 'copy' && !route.at && (P.subIndex < 0 || maxConnections() > 1);
+    if (S.caps.ffmpeg && !direct) {
+      startVodTranscoded(item, url, route, resumeAt, info.duration || P.vodDuration, resumeAt > 0);
       return;
     }
-  }
-  // senza ffmpeg il catch-up (MPEG-TS) si legge con mpegts.js
-  if (ext === 'ts' && !S.caps.ffmpeg && mpegtsReady()) {
-    setStatus('Caricamento…');
-    startMpegts(proxied(url), false, item, 'vod');
-    return;
-  }
-  if (!native && S.caps.ffprobe) {
-    setStatus('Analisi codec del file…');
-    try {
-      const { info, route } = await probeRoute(url);
-      if (S.current !== item) return;
-      startVodTranscoded(item, url, route, resumeAt, info.duration, resumeAt > 0);
-      return;
-    } catch (e) {
-      if (S.current !== item) return;
-      setHint(`Analisi non riuscita (${errText(e)}): provo la riproduzione diretta.`);
+  } else {
+    P.tracks.from = 'none';
+    renderTracksMenu();
+    // senza analisi: codec dichiarati dal pannello (episodi, scheda film), se ci sono
+    const declared = item._codecs || (vodInfo && vodInfo.codecs);
+    if (S.caps.ffmpeg && XPCore.hasCodecs(declared)) {
+      const route = { mode: 'transcode', v: probeVideoOk(declared) ? 'copy' : 'h264', a: probeAudioOk(declared) ? 'copy' : 'aac' };
+      if (!native || route.v !== 'copy' || route.a !== 'copy') {
+        startVodTranscoded(item, url, route, resumeAt, P.vodDuration, resumeAt > 0);
+        return;
+      }
     }
-  } else if (!native && !S.caps.ffmpeg) {
-    setHint(`Formato .${ext}: senza ffmpeg il player integrato potrebbe non avere audio (AC3/DTS) o video (HEVC). Installa ffmpeg (winget install Gyan.FFmpeg) o usa "Apri in MPV/VLC esterno".`);
+    // senza ffmpeg il catch-up (MPEG-TS) si legge con mpegts.js
+    if (ext === 'ts' && !S.caps.ffmpeg && mpegtsReady()) {
+      setStatus('Caricamento…');
+      startMpegts(proxied(url), false, item, 'vod');
+      return;
+    }
+    if (!native && P.probe && P.probe.error) {
+      setHint(`Analisi non riuscita (${P.probe.error}): provo la riproduzione diretta.`);
+    } else if (!native && !S.caps.ffmpeg) {
+      setHint(`Formato .${ext}: senza ffmpeg il player integrato potrebbe non avere audio (AC3/DTS) o video (HEVC). Installa ffmpeg (winget install Gyan.FFmpeg) o usa "Apri in MPV/VLC esterno".`);
+    }
   }
   setStatus('Caricamento film…');
   video.src = proxied(url);
+  if (P.subIndex >= 0) setSubtitle(P.subIndex);
   if (resumeAt > 0) {
     video.addEventListener('loadedmetadata', () => {
       if (S.current === item && isFinite(video.duration) && resumeAt < video.duration - 60) {
@@ -609,7 +763,17 @@ function startVodTranscoded(item, url, route, ss, duration, announce) {
   setStatus(route.v === 'copy' && route.a === 'copy' ? 'Remux del file in corso…' : `Conversione in tempo reale: ${describeRoute(route)}`);
   if (announce && P.vodOffset > 0) toast(`Ripresa da ${fmtTime(P.vodOffset)}`);
   updateTech();
-  startMpegts(transcodeUrl(url, route, { live: false, ss: P.vodOffset }), false, item, 'vod');
+  // canali della traccia scelta (da ffprobe): con "Originale" il 5.1 resta 5.1
+  const track = P.probe && P.probe.audio ? P.probe.audio[route.at || 0] : null;
+  // lo stesso ffmpeg estrae tutti i sottotitoli testuali: cambiarli non richiede riavvii
+  // (al massimo 12, come nel backend; quella scelta per prima)
+  P.sid = newSid();
+  const chosen = P.subIndex >= 0 && P.tracks.subs[P.subIndex] ? [P.tracks.subs[P.subIndex].index] : [];
+  P.sessionSubs = [...chosen, ...textSubIndices().filter((i) => !chosen.includes(i))].slice(0, 12);
+  const opts = { live: false, ss: P.vodOffset, ch: track ? track.channels : 0, sid: P.sid, subs: P.sessionSubs };
+  startMpegts(transcodeUrl(url, route, opts), false, item, 'vod');
+  // i sottotitoli ripartono dallo stesso punto del video
+  if (P.subIndex >= 0) setSubtitle(P.subIndex);
 }
 
 function currentPlayTime() { return P.vodTranscoded ? P.vodOffset + video.currentTime : video.currentTime; }

@@ -35,5 +35,7 @@ const S = {
   // serie aperta nella colonna centrale: { item, info, season }
   seriesView: null,
   liveFormat: ['ts', 'm3u8', 'ffmpeg'].includes(lsGet('xp.liveFormat', 'ts')) ? lsGet('xp.liveFormat', 'ts') : 'ts',
+  // impostazioni del pannello (audio, qualità, lingue, player esterno)
+  settings: XPCore.normalizeSettings(lsGet('xp.settings', null)),
   loadSeq: 0,
 };

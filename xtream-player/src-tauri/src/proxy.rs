@@ -16,7 +16,7 @@ use reqwest::Url;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
-use crate::transcode::{handle_transcode, open_upstream};
+use crate::transcode::{handle_subtitles, handle_transcode, open_upstream, release_parked};
 use crate::ts::pump_live;
 use crate::util::{describe_reqwest_error, CORS_HEADERS};
 
@@ -174,7 +174,8 @@ pub async fn handle_conn(mut sock: TcpStream, ctx: Arc<ProxyCtx>) -> io::Result<
         Err(_) => return write_simple(&mut sock, 400, "Bad Request", "Richiesta non valida").await,
     };
     let is_transcode = parsed.path() == format!("/t/{}", ctx.token);
-    if !is_transcode && parsed.path() != format!("/p/{}", ctx.token) {
+    let is_subtitles = parsed.path() == format!("/s/{}", ctx.token);
+    if !is_transcode && !is_subtitles && parsed.path() != format!("/p/{}", ctx.token) {
         return write_simple(&mut sock, 403, "Forbidden", "Token non valido").await;
     }
     let params: HashMap<String, String> = parsed.query_pairs().into_owned().collect();
@@ -187,7 +188,14 @@ pub async fn handle_conn(mut sock: TcpStream, ctx: Arc<ProxyCtx>) -> io::Result<
         _ => return write_simple(&mut sock, 400, "Bad Request", "URL di destinazione non valido").await,
     };
     if is_transcode {
-        return handle_transcode(sock, &method, target_url, &params, &ctx.client).await;
+        return handle_transcode(sock, &method, target_url, &params, &ctx.client, range.as_deref()).await;
+    }
+    // un film convertito in pausa tiene la connessione al provider: si libera per i nuovi stream
+    if !(is_subtitles && params.contains_key("sid")) {
+        release_parked();
+    }
+    if is_subtitles {
+        return handle_subtitles(sock, &method, target_url, &params).await;
     }
 
     // live MPEG-TS diretto (&live=1): tentativi sul limite connessioni e salto della raffica
@@ -204,7 +212,8 @@ pub async fn handle_conn(mut sock: TcpStream, ctx: Arc<ProxyCtx>) -> io::Result<
             CORS_HEADERS
         );
         sock.write_all(head.as_bytes()).await?;
-        pump_live(resp, &mut sock, None).await;
+        let sid = params.get("sid").map(String::as_str);
+        pump_live(resp, &mut sock, None, sid).await;
         let _ = sock.shutdown().await;
         return Ok(());
     }
@@ -354,6 +363,24 @@ mod tests {
     fn find_subsequence_works() {
         assert_eq!(find_subsequence(b"GET / HTTP/1.1\r\nA: b\r\n\r\nrest", b"\r\n\r\n"), Some(20));
         assert_eq!(find_subsequence(b"abc", b"\r\n\r\n"), None);
+    }
+
+    /// Banco di prova manuale: il proxy reale su 127.0.0.1:XP_BENCH_PORT (token "bench") per le
+    /// pagine di prova nel browser, senza aprire l'app:
+    /// `cargo test proxy_bench -- --ignored --nocapture` (le tracce lette dalla PMT finiscono su stdout).
+    #[test]
+    #[ignore = "banco di prova manuale: avvia il proxy per XP_BENCH_SECS secondi"]
+    fn proxy_bench() {
+        let env = |k: &str, def: u64| std::env::var(k).ok().and_then(|v| v.parse().ok()).unwrap_or(def);
+        let port = env("XP_BENCH_PORT", 17999) as u16;
+        let listener = std::net::TcpListener::bind(("127.0.0.1", port)).expect("porta del banco occupata");
+        listener.set_nonblocking(true).unwrap();
+        let ctx = Arc::new(ProxyCtx { client: crate::xtream::build_client(), port, token: "bench".into() });
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        println!("[bench] proxy http://127.0.0.1:{}/ token bench", port);
+        rt.block_on(async {
+            let _ = tokio::time::timeout(Duration::from_secs(env("XP_BENCH_SECS", 600)), run_proxy(listener, ctx)).await;
+        });
     }
 
     #[test]

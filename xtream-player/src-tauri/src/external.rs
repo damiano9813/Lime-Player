@@ -33,6 +33,7 @@ pub fn open_in_external_player(
     stream_url: String,
     title: Option<String>,
     live: Option<bool>,
+    prefer: Option<String>,
 ) -> Result<String, String> {
     let url = stream_url.trim().to_string();
     let parsed = Url::parse(&url).map_err(|_| "URL dello stream non valido".to_string())?;
@@ -41,7 +42,23 @@ pub fn open_in_external_player(
     }
     let title = title.unwrap_or_default().replace(['\r', '\n', '"'], " ");
     let live = live.unwrap_or(false);
+    // il player esterno ha bisogno della connessione al provider
+    crate::transcode::release_parked();
+    // player preferito dalle impostazioni; se manca si prova l'altro
+    let order: [fn(&str, &str, bool) -> Option<String>; 2] = if prefer.as_deref() == Some("vlc") {
+        [open_vlc, open_mpv]
+    } else {
+        [open_mpv, open_vlc]
+    };
+    order
+        .iter()
+        .find_map(|open| open(&url, &title, live))
+        .ok_or_else(|| {
+            "Nessun player esterno trovato. Installa mpv (https://mpv.io) o VLC (winget install VideoLAN.VLC).".to_string()
+        })
+}
 
+fn open_mpv(url: &str, title: &str, live: bool) -> Option<String> {
     let mpv = player_candidates(
         "mpv",
         vec![
@@ -79,12 +96,15 @@ pub fn open_in_external_player(
         if !is_mpvnet {
             cmd.arg("--");
         }
-        cmd.arg(&url);
+        cmd.arg(url);
         if spawn_detached(&mut cmd).is_ok() {
-            return Ok(if is_mpvnet { "mpv.net" } else { "mpv" }.to_string());
+            return Some(if is_mpvnet { "mpv.net" } else { "mpv" }.to_string());
         }
     }
+    None
+}
 
+fn open_vlc(url: &str, title: &str, live: bool) -> Option<String> {
     let vlc = player_candidates(
         "vlc",
         vec![
@@ -100,11 +120,10 @@ pub fn open_in_external_player(
         if !title.is_empty() {
             cmd.arg(format!("--meta-title={}", title));
         }
-        cmd.arg(&url);
+        cmd.arg(url);
         if spawn_detached(&mut cmd).is_ok() {
-            return Ok("VLC".to_string());
+            return Some("VLC".to_string());
         }
     }
-
-    Err("Nessun player esterno trovato. Installa mpv (https://mpv.io) o VLC (winget install VideoLAN.VLC).".to_string())
+    None
 }

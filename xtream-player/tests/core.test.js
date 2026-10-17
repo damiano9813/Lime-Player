@@ -199,3 +199,123 @@ test('buffer adattivo: crescita dopo scatto e rilascio', () => {
   assert.ok(Math.abs(X.relaxTarget(1.0, 0.6) - 0.85) < 1e-9);
   assert.equal(X.relaxTarget(0.65, 0.6), 0.6);
 });
+
+test('URL con traccia audio, qualità, 5.1, sessione e sottotitoli', () => {
+  const proxy = { port: 5555, token: 'tok' };
+  const src = 'http://h/live/a/b/1.ts';
+  const pl = new URL(X.proxyUrl(proxy, src, { live: true, sid: 'ab c' }));
+  assert.equal(pl.searchParams.get('sid'), 'ab c');
+  assert.equal(pl.searchParams.get('u'), src);
+  const t = new URL(X.transcodeUrl(proxy, src, { v: 'copy', a: 'aac', at: 2 }, { live: true, q: 'high', ac: 'orig', ch: 6, sid: 's1' }));
+  assert.equal(t.searchParams.get('at'), '2');
+  assert.equal(t.searchParams.get('q'), 'high');
+  assert.equal(t.searchParams.get('ac'), 'orig');
+  assert.equal(t.searchParams.get('ch'), '6');
+  assert.equal(t.searchParams.get('sid'), 's1');
+  // valori predefiniti: URL corti, nessun parametro superfluo
+  const d = new URL(X.transcodeUrl(proxy, src, { v: 'copy', a: 'aac' }, { live: true, q: 'bal', ac: 'stereo', ch: 0 }));
+  for (const k of ['at', 'q', 'ac', 'ch', 'sid']) assert.equal(d.searchParams.get(k), null, k);
+  const s = new URL(X.subtitleUrl(proxy, 'http://h/movie/u/p/7.mkv', 1, 754.8));
+  assert.equal(s.pathname, '/s/tok');
+  assert.equal(s.searchParams.get('u'), 'http://h/movie/u/p/7.mkv');
+  assert.equal(s.searchParams.get('i'), '1');
+  assert.equal(s.searchParams.get('ss'), '754', 'stesso arrotondamento del percorso /t/');
+  assert.equal(new URL(X.subtitleUrl(proxy, 'http://h/1.mp4', 0)).searchParams.get('ss'), '0');
+  assert.equal(new URL(X.subtitleUrl(proxy, 'http://h/1.mp4', 0)).searchParams.get('sid'), null, 'estrazione autonoma');
+  // film convertito: sottotitoli dalla stessa sessione ffmpeg
+  const vod = new URL(X.transcodeUrl(proxy, 'http://h/movie/u/p/7.mkv', { v: 'copy', a: 'copy' }, { live: false, ss: 60, sid: 'v1', subs: [0, 2] }));
+  assert.equal(vod.searchParams.get('subs'), '0,2');
+  assert.equal(new URL(X.transcodeUrl(proxy, src, { v: 'copy', a: 'copy' }, { live: false, subs: [] })).searchParams.get('subs'), null);
+  const ss = new URL(X.subtitleUrl(proxy, 'http://h/movie/u/p/7.mkv', 2, 60, 'v1'));
+  assert.equal(ss.searchParams.get('sid'), 'v1');
+  assert.equal(ss.searchParams.get('i'), '2');
+});
+
+test('la traccia audio scelta sopravvive a conversione e salvataggio', () => {
+  assert.deepEqual(X.mergeRoute({ v: 'copy', a: 'copy', at: 2 }, { v: 'h264', a: 'copy' }), { mode: 'transcode', v: 'h264', a: 'copy', at: 2 });
+  assert.deepEqual(X.mergeRoute({ v: 'copy', a: 'copy' }, { v: 'copy', a: 'aac', at: 1 }), { mode: 'transcode', v: 'copy', a: 'aac', at: 1 });
+  assert.deepEqual(X.normalizeSavedRoute({ v: 'copy', a: 'copy', at: 1, t: 5 }), { mode: 'transcode', v: 'copy', a: 'copy', at: 1 }, 'solo la traccia diversa basta');
+  assert.deepEqual(X.normalizeSavedRoute({ v: 'h264', a: 'aac', at: 0 }), { mode: 'transcode', v: 'h264', a: 'aac' });
+  assert.equal(X.normalizeSavedRoute({ v: 'copy', a: 'copy', at: -1 }), null);
+  assert.equal(X.normalizeSavedRoute({ v: 'copy', a: 'copy', at: 1.5 }), null);
+});
+
+test('lingue: codici ISO 639 e nomi', () => {
+  assert.equal(X.normLang('ITA'), 'ita');
+  assert.equal(X.normLang('it'), 'ita');
+  assert.equal(X.normLang('it-IT'), 'ita');
+  assert.equal(X.normLang('ger'), 'deu');
+  assert.equal(X.normLang('fre'), 'fra');
+  assert.equal(X.normLang('und'), '');
+  assert.equal(X.normLang(''), '');
+  assert.equal(X.normLang('x1'), '');
+  assert.equal(X.normLang('kaz'), 'kaz', 'codici sconosciuti restano validi');
+  assert.equal(X.langName('eng'), 'Inglese');
+  assert.equal(X.langName('es'), 'Spagnolo');
+  assert.equal(X.langName('kaz'), 'KAZ');
+  assert.equal(X.langName(''), 'Lingua non indicata');
+  assert.ok(X.PREFERRED_LANGS.every((c) => X.normLang(c) === c && X.langName(c) !== c.toUpperCase()));
+});
+
+test('etichette delle tracce', () => {
+  assert.equal(X.trackLabel({ lang: 'ita', codec: 'ac3', channels: 6 }), 'Italiano · Dolby Digital 5.1');
+  assert.equal(X.trackLabel({ lang: 'eng', codec: 'aac', channels: 2, title: 'Commento del regista' }), 'Inglese · AAC stereo · Commento del regista');
+  assert.equal(X.trackLabel({ lang: 'ita', codec: 'subrip', title: 'Italiano', forced: true }), 'Italiano · SRT · forzati', 'titolo uguale alla lingua omesso');
+  assert.equal(X.trackLabel({ lang: '', codec: 'mp2' }), 'Lingua non indicata · MP2');
+  assert.equal(X.channelsLabel(1), 'mono');
+  assert.equal(X.channelsLabel(8), '7.1');
+  assert.equal(X.channelsLabel(3), '3 canali');
+  assert.equal(X.channelsLabel(0), '');
+  assert.equal(X.codecName('hdmv_pgs_subtitle'), 'PGS');
+  assert.equal(X.codecName('xyz'), 'XYZ');
+});
+
+test('scelta della traccia nella lingua preferita', () => {
+  const audio = [
+    { index: 0, lang: 'eng', codec: 'aac' },
+    { index: 1, lang: 'ita', codec: 'ac3', title: 'Commento' },
+    { index: 2, lang: 'it', codec: 'eac3', default: true },
+  ];
+  assert.equal(X.pickTrack(audio, 'ita'), 2, 'prima la traccia predefinita');
+  assert.equal(X.pickTrack(audio.slice(0, 2), 'ita'), 1);
+  assert.equal(X.pickTrack(audio, 'eng'), 0);
+  assert.equal(X.pickTrack(audio, 'deu'), -1);
+  assert.equal(X.pickTrack(audio, ''), -1, 'nessuna preferenza');
+  assert.equal(X.pickTrack(null, 'ita'), -1);
+  const subs = [
+    { index: 0, lang: 'ita', codec: 'hdmv_pgs_subtitle', text: false },
+    { index: 1, lang: 'ita', codec: 'subrip', text: true, forced: true },
+    { index: 2, lang: 'ita', codec: 'subrip', text: true },
+  ];
+  assert.equal(X.pickTrack(subs, 'ita', true), 2, 'testuali, non forzati');
+  assert.equal(X.pickTrack(subs.slice(0, 2), 'ita', true), 1, 'forzati se sono gli unici');
+  assert.equal(X.pickTrack(subs.slice(0, 1), 'ita', true), -1, 'le immagini non si mostrano');
+});
+
+test('percorso per ascoltare un\'altra traccia audio', () => {
+  const direct = { mode: 'direct', v: 'copy', a: 'copy' };
+  // traccia AC-3: conversione in AAC con la mappa sulla traccia scelta
+  assert.deepEqual(X.audioTrackRoute(direct, { index: 1, codec: 'ac3' }), { mode: 'transcode', v: 'copy', a: 'aac', at: 1 });
+  // traccia AAC: solo remux
+  assert.deepEqual(X.audioTrackRoute(direct, { index: 2, codec: 'aac' }), { mode: 'transcode', v: 'copy', a: 'copy', at: 2 });
+  // ritorno alla prima traccia compatibile: niente ffmpeg
+  assert.deepEqual(X.audioTrackRoute(direct, { index: 0, codec: 'aac' }), direct);
+  // ...a meno che il film non sia già convertito (MKV)
+  assert.deepEqual(X.audioTrackRoute({ mode: 'transcode', v: 'copy', a: 'copy', at: 1 }, { index: 0, codec: 'aac' }, { forceTranscode: true }), { mode: 'transcode', v: 'copy', a: 'copy' });
+  // la conversione video in corso resta
+  assert.deepEqual(X.audioTrackRoute({ mode: 'transcode', v: 'h264', a: 'aac' }, { index: 1, codec: 'mp2' }), { mode: 'transcode', v: 'h264', a: 'aac', at: 1 });
+  assert.deepEqual(X.audioTrackRoute({ mode: 'transcode', v: 'h264', a: 'aac', at: 1 }, { index: 0, codec: 'aac' }), { mode: 'transcode', v: 'h264', a: 'copy' });
+  // MP2 dei canali DVB e Opus senza supporto: AAC
+  assert.equal(X.audioTrackRoute(direct, { index: 0, codec: 'mp2' }).a, 'aac');
+  assert.equal(X.audioTrackRoute(direct, { index: 1, codec: 'opus' }).a, 'aac');
+  assert.equal(X.audioTrackRoute(direct, { index: 1, codec: 'opus' }, { opusOk: true }).a, 'copy');
+  assert.equal(X.audioCopyOk('MP3'), true);
+  assert.equal(X.audioCopyOk('aac_latm'), false);
+});
+
+test('impostazioni: valori ammessi e predefiniti', () => {
+  assert.deepEqual(X.normalizeSettings(null), X.SETTINGS_DEFAULTS);
+  assert.deepEqual(X.normalizeSettings({ audioOut: 'orig', quality: 'high', audioLang: 'IT', subLang: 'eng', external: 'vlc' }),
+    { audioOut: 'orig', quality: 'high', audioLang: 'ita', subLang: 'eng', external: 'vlc' });
+  assert.deepEqual(X.normalizeSettings({ audioOut: '7.1', quality: 'ultra', audioLang: 'und', external: 'kodi', extra: 1 }), X.SETTINGS_DEFAULTS);
+});

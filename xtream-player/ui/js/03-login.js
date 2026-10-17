@@ -106,7 +106,6 @@ function enterApp() {
   $('app-view').classList.remove('hidden');
   renderAccount();
   renderCaps();
-  updateSettingsMenu();
   setTheater(lsGet('xp.theater', false));
   switchMode(S.mode, true);
 }

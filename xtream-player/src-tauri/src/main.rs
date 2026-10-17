@@ -70,7 +70,9 @@ fn main() {
             catalog::get_epg_day,
             catalog::get_series_list,
             catalog::get_series_info,
-            catalog::get_vod_info
+            catalog::get_vod_info,
+            ts::get_stream_tracks,
+            transcode::release_stream
         ])
         .run(tauri::generate_context!())
         .expect("errore durante l'avvio dell'applicazione");
