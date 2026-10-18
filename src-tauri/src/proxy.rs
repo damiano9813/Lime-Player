@@ -17,7 +17,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
 use crate::transcode::{handle_subtitles, handle_transcode, open_upstream, release_parked};
-use crate::ts::pump_live;
+use crate::ts::{parse_keep, pump_live};
 use crate::util::{describe_reqwest_error, CORS_HEADERS};
 
 pub struct ProxyCtx {
@@ -225,8 +225,9 @@ pub async fn handle_conn(mut sock: TcpStream, ctx: Arc<ProxyCtx>) -> io::Result<
         return handle_subtitles(sock, &method, target_url, &params).await;
     }
 
-    // live MPEG-TS diretto (&live=1): tentativi sul limite connessioni e salto della raffica
-    // iniziale, così il player riceve subito il bordo live invece di 20-30 s di video vecchio
+    // live MPEG-TS diretto (&live=1): tentativi sul limite connessioni, salto della raffica
+    // iniziale (se ne tengono `keep` secondi, il buffer di partenza del player) e
+    // riconnessione al provider senza chiudere il player se il flusso cade o si ferma
     if method == "GET" && params.get("live").map(|s| s == "1").unwrap_or(false) {
         let resp = match open_upstream(&ctx.client, &target_url).await {
             Ok(r) => r,
@@ -240,7 +241,9 @@ pub async fn handle_conn(mut sock: TcpStream, ctx: Arc<ProxyCtx>) -> io::Result<
         );
         sock.write_all(head.as_bytes()).await?;
         let sid = params.get("sid").map(String::as_str);
-        pump_live(resp, &mut sock, None, sid).await;
+        let keep = parse_keep(params.get("keep").map(String::as_str));
+        let reopen = || open_upstream(&ctx.client, &target_url);
+        pump_live(resp, reopen, &mut sock, None, sid, keep, true).await;
         let _ = sock.shutdown().await;
         return Ok(());
     }

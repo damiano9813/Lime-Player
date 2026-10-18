@@ -2,7 +2,8 @@
 //! e registro delle tracce dei canali live.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::future::Future;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -10,52 +11,140 @@ use futures_util::StreamExt;
 use serde::Serialize;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
-/// Inoltra uno stream live a `out` (ffmpeg o il player) saltando la raffica iniziale.
-/// Termina a fine flusso, su errore di scrittura (destinazione chiusa) o quando `stop`
-/// diventa vero. Con `sid` legge anche PAT/PMT e registra le tracce della sessione.
-pub async fn pump_live<W: AsyncWrite + Unpin>(
+/// Secondi senza dati dal provider dopo cui la connessione live si considera ferma.
+pub const STALL_RECONNECT_SECS: f64 = 6.0;
+/// Riconnessioni senza video nuovo ammesse in un minuto: oltre, il flusso si chiude e decide il
+/// player. Quelle dopo cui sono arrivati dati nuovi non contano: alcuni provider chiudono la
+/// connessione ogni pochi secondi e vanno semplicemente richiamati.
+pub const MAX_RECONNECTS_PER_MIN: usize = 5;
+/// Video nuovo (secondi di PCR) che rende "utile" la connessione precedente.
+pub const RECONNECT_PROGRESS_SECS: f64 = 1.0;
+
+/// Ultimo flusso live aperto. L'app ne riproduce uno alla volta e molti account permettono una
+/// sola connessione: un flusso superato da uno più nuovo (cambio canale, passaggio a ffmpeg) si
+/// chiude subito e soprattutto non si riconnette, altrimenti ruberebbe la connessione al nuovo
+/// e i due si chiuderebbero a vicenda.
+static LIVE_GEN: AtomicU64 = AtomicU64::new(0);
+
+/// Inoltra uno stream live a `out` (ffmpeg o il player) saltando la raffica iniziale, di cui
+/// tiene gli ultimi `keep` secondi. Se la connessione al provider cade o resta ferma per
+/// `STALL_RECONNECT_SECS`, la riapre con `reopen` e riprende dal punto in cui era arrivata
+/// senza chiudere `out`: il player vede solo una breve pausa nei dati, non un errore.
+/// Termina su errore di scrittura (destinazione chiusa), quando `stop` diventa vero o quando
+/// la riconnessione non riesce. Con `sid` legge anche PAT/PMT e registra le tracce. Con
+/// `exclusive` termina anche appena parte un altro flusso esclusivo (vedi `LIVE_GEN`).
+pub async fn pump_live<W, R, Fut>(
     resp: reqwest::Response,
+    mut reopen: R,
     out: &mut W,
     stop: Option<&AtomicBool>,
     sid: Option<&str>,
-) {
-    let mut body = resp.bytes_stream();
-    let mut skipper = BurstSkipper::new();
+    keep: f64,
+    exclusive: bool,
+) where
+    W: AsyncWrite + Unpin,
+    R: FnMut() -> Fut,
+    Fut: Future<Output = Result<reqwest::Response, String>>,
+{
+    let mut body = Some(resp.bytes_stream());
+    let mut skipper = BurstSkipper::with_keep(keep);
+    let mut resync: Option<Resync> = None;
+    let mut clock = PcrClock::default();
+    let mut last_data = Instant::now();
+    let mut reconnects: Vec<Instant> = Vec::new();
+    // ultimo PCR inoltrato al momento della riconnessione precedente
+    let mut pcr_at_reconnect: Option<f64> = None;
     // le tabelle si leggono solo finché non si trova la PMT: dopo, nessun costo per pacchetto
     let mut psi = sid.map(|_| PsiScanner::new());
+    let gen = LIVE_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    let superseded = || exclusive && LIVE_GEN.load(Ordering::SeqCst) != gen;
     loop {
-        if stop.map(|s| s.load(Ordering::Relaxed)).unwrap_or(false) {
+        if stop.map(|s| s.load(Ordering::Relaxed)).unwrap_or(false) || superseded() {
             break;
         }
-        let next = match tokio::time::timeout(Duration::from_millis(150), body.next()).await {
+        let Some(stream) = body.as_mut() else { break };
+        let next = match tokio::time::timeout(Duration::from_millis(150), stream.next()).await {
             Ok(n) => n,
             Err(_) => {
                 // nessun dato per 150 ms: si rivaluta se la raffica è finita
-                if !skipper.done && skipper.start.is_some() {
+                if !skipper.done && skipper.start.is_some() && resync.is_none() {
                     if let Some(data) = skipper.push(&[]) {
-                        if out.write_all(&data).await.is_err() {
+                        if !emit(out, &mut clock, &data).await {
                             break;
                         }
                     }
                 }
-                continue;
+                if last_data.elapsed().as_secs_f64() < STALL_RECONNECT_SECS {
+                    continue;
+                }
+                None
             }
         };
         let bytes = match next {
             Some(Ok(b)) => b,
-            _ => break,
+            _ => {
+                // connessione al provider caduta o ferma: se ne apre un'altra (la vecchia si
+                // chiude prima, molti account ne permettono una sola).
+                // La connessione appena caduta ha portato video nuovo: non conta come fallita
+                let progressed = match (pcr_at_reconnect, clock.last) {
+                    (Some(before), Some(now)) => now - before >= RECONNECT_PROGRESS_SECS,
+                    _ => false,
+                };
+                if progressed {
+                    reconnects.clear();
+                }
+                pcr_at_reconnect = clock.last;
+                reconnects.retain(|t| t.elapsed() < Duration::from_secs(60));
+                if reconnects.len() >= MAX_RECONNECTS_PER_MIN {
+                    break;
+                }
+                reconnects.push(Instant::now());
+                drop(body.take());
+                // un flusso più nuovo ha già la connessione: niente riconnessione
+                if superseded() {
+                    break;
+                }
+                match reopen().await {
+                    // partito un altro flusso durante la riconnessione: la connessione è sua
+                    Ok(_) if superseded() => break,
+                    Ok(r) => body = Some(r.bytes_stream()),
+                    Err(_) => break,
+                }
+                last_data = Instant::now();
+                // si riprende dopo l'ultimo PCR inoltrato; senza riferimento (raffica non ancora
+                // finita, flusso senza PCR) si ricomincia come una connessione nuova
+                resync = match (skipper.done, clock.pid, clock.last) {
+                    (true, Some(pid), Some(last)) => Some(Resync::new(pid, last)),
+                    _ => {
+                        skipper = BurstSkipper::with_keep(keep);
+                        None
+                    }
+                };
+                continue;
+            }
         };
+        last_data = Instant::now();
         if let (Some(scanner), Some(sid)) = (psi.as_mut(), sid) {
             if let Some(tracks) = scanner.push(&bytes) {
                 register_tracks(sid, tracks);
                 psi = None;
             }
         }
-        let ok = if skipper.done {
-            out.write_all(&bytes).await.is_ok()
+        let ok = if let Some(rs) = resync.as_mut() {
+            match rs.push(&bytes) {
+                ResyncStep::Wait => true,
+                ResyncStep::Forward(data) => {
+                    resync = None;
+                    emit(out, &mut clock, &data).await
+                }
+                // il player non potrebbe usare dati non continui: si chiude e lui riparte
+                ResyncStep::GiveUp => break,
+            }
+        } else if skipper.done {
+            emit(out, &mut clock, &bytes).await
         } else {
             match skipper.push(&bytes) {
-                Some(data) => out.write_all(&data).await.is_ok(),
+                Some(data) => emit(out, &mut clock, &data).await,
                 None => true,
             }
         };
@@ -65,13 +154,199 @@ pub async fn pump_live<W: AsyncWrite + Unpin>(
     }
 }
 
+/// Scrive verso il player (o ffmpeg) e tiene traccia dell'ultimo PCR inoltrato.
+async fn emit<W: AsyncWrite + Unpin>(out: &mut W, clock: &mut PcrClock, data: &[u8]) -> bool {
+    clock.feed(data);
+    out.write_all(data).await.is_ok()
+}
+
+// ---------------------------------------------------------------------------
+// Riconnessione: il nuovo collegamento riparte con la raffica del server, che contiene
+// in gran parte video già inoltrato. Si scartano i pacchetti fino al primo PCR successivo
+// all'ultimo inoltrato e si riprende da lì, così il player riceve un flusso continuo.
+// Se la ripresa non è possibile (altra timeline, nessun dato utile) il flusso si chiude: dati
+// con timestamp non continui il player li scarterebbe e resterebbe fermo, mentre a flusso
+// chiuso riavvia il canale da capo.
+// ---------------------------------------------------------------------------
+
+/// Oltre questa distanza dall'ultimo PCR inoltrato il nuovo flusso è un'altra timeline. Indietro
+/// si tollera molto: alcuni provider a ogni connessione rimandano 10 minuti già trasmessi.
+pub const RESYNC_MAX_AHEAD_SECS: f64 = 30.0;
+pub const RESYNC_MAX_BEHIND_SECS: f64 = 3600.0;
+/// Senza PCR sul PID atteso per questo tempo la ripresa si abbandona.
+pub const RESYNC_NO_PCR_SECS: f64 = 3.0;
+/// Attesa massima perché un provider lento arrivi al punto già inoltrato: il player intanto
+/// consuma il suo buffer ("Stabile" ne ha decine di secondi).
+pub const RESYNC_MAX_WAIT_SECS: f64 = 30.0;
+
+/// Ultimo PCR (sul PID del PCR) dei dati inoltrati; i pacchetti possono arrivare spezzati.
+#[derive(Default)]
+pub struct PcrClock {
+    carry: Vec<u8>,
+    pub pid: Option<u16>,
+    pub last: Option<f64>,
+}
+
+impl PcrClock {
+    pub fn feed(&mut self, data: &[u8]) {
+        let mut buf = std::mem::take(&mut self.carry);
+        buf.extend_from_slice(data);
+        let mut i = 0;
+        while i + TS_PACKET <= buf.len() {
+            if buf[i] != 0x47 {
+                match ts_find_sync(&buf, i + 1) {
+                    Some(j) => i = j,
+                    None => break,
+                }
+                continue;
+            }
+            if let Some((pid, pcr)) = ts_packet_pcr(&buf[i..i + TS_PACKET]) {
+                if self.pid.is_none() {
+                    self.pid = Some(pid);
+                }
+                if self.pid == Some(pid) {
+                    self.last = Some(pcr);
+                }
+            }
+            i += TS_PACKET;
+        }
+        // il resto (pacchetto incompleto o dati da risincronizzare) si tiene, al massimo 64 KB
+        let keep_from = i.max(buf.len().saturating_sub(64 * 1024));
+        self.carry = buf.split_off(keep_from.min(buf.len()));
+    }
+}
+
+#[derive(Debug)]
+pub enum ResyncStep {
+    /// dati ancora già inoltrati: si scartano
+    Wait,
+    /// da qui il flusso prosegue quello inoltrato
+    Forward(Vec<u8>),
+    /// ripresa impossibile (altra timeline, niente PCR, attesa troppo lunga): si chiude il
+    /// flusso e il player riavvia il canale
+    GiveUp,
+}
+
+pub struct Resync {
+    pid: u16,
+    after: f64,
+    pending: Vec<u8>,
+    parsed: usize,
+    synced: bool,
+    start: Instant,
+    /// ultimo PCR visto sul PID atteso: finché arrivano, il provider sta recuperando
+    last_pcr_at: Option<Instant>,
+}
+
+impl Resync {
+    pub fn new(pid: u16, after: f64) -> Self {
+        Self::new_at(pid, after, Instant::now())
+    }
+
+    pub fn new_at(pid: u16, after: f64, now: Instant) -> Self {
+        Resync {
+            pid,
+            after,
+            pending: Vec::new(),
+            parsed: 0,
+            synced: false,
+            start: now,
+            last_pcr_at: None,
+        }
+    }
+
+    pub fn push(&mut self, chunk: &[u8]) -> ResyncStep {
+        self.push_at(chunk, Instant::now())
+    }
+
+    pub fn push_at(&mut self, chunk: &[u8], now: Instant) -> ResyncStep {
+        self.pending.extend_from_slice(chunk);
+        if !self.synced {
+            match ts_find_sync(&self.pending, 0) {
+                Some(i) => {
+                    self.parsed = i;
+                    self.synced = true;
+                }
+                None => return self.give_up_if_late(now),
+            }
+        }
+        while self.parsed + TS_PACKET <= self.pending.len() {
+            if self.pending[self.parsed] != 0x47 {
+                match ts_find_sync(&self.pending, self.parsed + 1) {
+                    Some(i) => {
+                        self.parsed = i;
+                        continue;
+                    }
+                    None => break,
+                }
+            }
+            let at = self.parsed;
+            self.parsed += TS_PACKET;
+            let Some((pid, pcr)) = ts_packet_pcr(&self.pending[at..at + TS_PACKET]) else {
+                continue;
+            };
+            if pid != self.pid {
+                continue;
+            }
+            self.last_pcr_at = Some(now);
+            if pcr > self.after + RESYNC_MAX_AHEAD_SECS || pcr < self.after - RESYNC_MAX_BEHIND_SECS
+            {
+                // altra timeline
+                return ResyncStep::GiveUp;
+            }
+            if pcr > self.after {
+                return ResyncStep::Forward(self.pending.split_off(at));
+            }
+            // pacchetti già inoltrati: si liberano subito
+            self.pending.drain(..self.parsed);
+            self.parsed = 0;
+        }
+        self.give_up_if_late(now)
+    }
+
+    fn give_up_if_late(&mut self, now: Instant) -> ResyncStep {
+        let since = |t: Instant| now.duration_since(t).as_secs_f64();
+        if since(self.last_pcr_at.unwrap_or(self.start)) > RESYNC_NO_PCR_SECS {
+            // nessun PCR dal provider
+            ResyncStep::GiveUp
+        } else if since(self.start) > RESYNC_MAX_WAIT_SECS {
+            // il provider non raggiunge il punto inoltrato
+            ResyncStep::GiveUp
+        } else if self.pending.len() > 32 * 1024 * 1024 {
+            // troppi dati senza ripresa
+            ResyncStep::GiveUp
+        } else {
+            ResyncStep::Wait
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Raffica iniziale: alla connessione molti server Xtream inviano in ~1 s il proprio
 // buffer (anche 20-30 s di video già vecchio), poi proseguono in tempo reale. Se il
 // video va convertito, codificare quella raffica ritarda l'avvio di secondi. Il proxy
 // legge i PCR dei pacchetti MPEG-TS, capisce quando il flusso torna al tempo reale e
-// passa a ffmpeg solo gli ultimi secondi, cioè il bordo live.
+// passa solo gli ultimi `keep` secondi: il bordo live più il buffer con cui parte il
+// player (`keep=` nell'URL del proxy), che così non deve aspettarlo.
+// Con `keep=all` (preset "Stabile") la raffica non si taglia: tutto passa subito, il player
+// parte in un attimo con un buffer di decine di secondi, a costo di guardare indietro
+// rispetto alla diretta di quanto è lunga la raffica.
 // ---------------------------------------------------------------------------
+
+/// Valore di `keep=` nell'URL del proxy: secondi tra 1 e 10 (predefinito `BURST_KEEP_SECS`)
+/// oppure `all`, cioè infinito: nessun taglio.
+pub fn parse_keep(v: Option<&str>) -> f64 {
+    match v.map(str::trim) {
+        Some("all") => f64::INFINITY,
+        Some(s) => s
+            .parse::<f64>()
+            .ok()
+            .filter(|x| x.is_finite())
+            .map(|x| x.clamp(1.0, 10.0))
+            .unwrap_or(BURST_KEEP_SECS),
+        None => BURST_KEEP_SECS,
+    }
+}
 
 pub const TS_PACKET: usize = 188;
 pub const BURST_KEEP_SECS: f64 = 2.5;
@@ -119,10 +394,19 @@ pub struct BurstSkipper {
     pub samples: Vec<(f64, f64)>,
     pub start: Option<Instant>,
     pub done: bool,
+    /// secondi di raffica da tenere: il buffer con cui parte il player
+    pub keep: f64,
 }
 
 impl BurstSkipper {
+    #[cfg(test)]
     pub fn new() -> Self {
+        Self::with_keep(BURST_KEEP_SECS)
+    }
+
+    /// `keep` infinito: nessun taglio, il flusso passa così com'è (già `done`).
+    pub fn with_keep(keep: f64) -> Self {
+        let all = keep == f64::INFINITY;
         BurstSkipper {
             pending: Vec::new(),
             parsed: 0,
@@ -133,7 +417,14 @@ impl BurstSkipper {
             marks: Vec::new(),
             samples: Vec::new(),
             start: None,
-            done: false,
+            done: all,
+            keep: if all {
+                keep
+            } else if keep.is_finite() {
+                keep.clamp(1.0, 10.0)
+            } else {
+                BURST_KEEP_SECS
+            },
         }
     }
 
@@ -212,7 +503,7 @@ impl BurstSkipper {
             // nessuna raffica significativa
             return Some(self.release_all());
         }
-        let cut = self.last_pcr - BURST_KEEP_SECS;
+        let cut = self.last_pcr - self.keep;
         let offset = self
             .marks
             .iter()
@@ -724,6 +1015,271 @@ mod tests {
             .push_at(&b, t0 + Duration::from_millis(100))
             .expect("rilascio su discontinuità");
         assert_eq!(out.len(), a.len() + b.len());
+    }
+
+    fn pcrs(buf: &[u8]) -> Vec<f64> {
+        buf.chunks(TS_PACKET)
+            .filter_map(|p| ts_packet_pcr(p).map(|(_, pcr)| pcr))
+            .collect()
+    }
+
+    #[test]
+    fn burst_keep_is_configurable() {
+        assert_eq!(parse_keep(None), BURST_KEEP_SECS);
+        assert_eq!(parse_keep(Some("4.5")), 4.5);
+        assert_eq!(parse_keep(Some("99")), 10.0);
+        assert_eq!(parse_keep(Some("0")), 1.0);
+        assert_eq!(parse_keep(Some("x")), BURST_KEEP_SECS);
+        // "all": nessun taglio, si inoltra subito
+        assert!(parse_keep(Some("all")).is_infinite());
+        assert!(BurstSkipper::with_keep(parse_keep(Some("all"))).done);
+        assert!(!BurstSkipper::with_keep(f64::NAN).done);
+        // con keep=6 la raffica di 24 s lascia al player gli ultimi ~6 s
+        let t0 = Instant::now();
+        let mut s = BurstSkipper::with_keep(6.0);
+        assert!(s.push_at(&chunk(0.0, 24.0), t0).is_none());
+        let out = s
+            .push_at(&chunk(24.0, 24.3), t0 + Duration::from_millis(500))
+            .expect("fine raffica");
+        let p = pcrs(&out);
+        let span = p.last().unwrap() - p.first().unwrap();
+        assert!((5.9..=6.3).contains(&span), "tenuti {} s", span);
+    }
+
+    #[test]
+    fn pcr_clock_follows_split_packets() {
+        let data = chunk(10.0, 11.0);
+        let mut c = PcrClock::default();
+        // pezzi di dimensione dispari: i pacchetti arrivano spezzati
+        for piece in data.chunks(1000) {
+            c.feed(piece);
+        }
+        assert_eq!(c.pid, Some(256));
+        assert!((c.last.unwrap() - 10.9).abs() < 0.001);
+        // dati non allineati in testa: si risincronizza
+        let mut c = PcrClock::default();
+        let mut junk = vec![1u8, 2, 3];
+        junk.extend(chunk(5.0, 5.5));
+        c.feed(&junk);
+        assert!((c.last.unwrap() - 5.4).abs() < 0.001);
+    }
+
+    #[test]
+    fn resync_skips_what_was_already_sent() {
+        let t0 = Instant::now();
+        let mut r = Resync::new(256, 10.0);
+        // la nuova connessione riparte da 5 s: fino a 10 s è già stato inoltrato
+        let mut out = None;
+        for piece in chunk(5.0, 12.0).chunks(5000) {
+            match r.push_at(piece, t0) {
+                ResyncStep::Wait => {}
+                ResyncStep::Forward(d) => {
+                    out = Some(d);
+                    break;
+                }
+                ResyncStep::GiveUp => panic!("stessa timeline: niente abbandono"),
+            }
+        }
+        let out = out.expect("ripresa attesa");
+        assert_eq!(out[0], 0x47);
+        assert!(
+            (pcrs(&out)[0] - 10.1).abs() < 0.001,
+            "riprende dopo l'ultimo inoltrato"
+        );
+    }
+
+    #[test]
+    fn resync_gives_up_on_another_timeline_or_without_pcr() {
+        let t0 = Instant::now();
+        let mut r = Resync::new_at(256, 10.0, t0);
+        assert!(matches!(
+            r.push_at(&chunk(500.0, 501.0), t0),
+            ResyncStep::GiveUp
+        ));
+        let mut r = Resync::new_at(256, 10.0, t0);
+        // nessun PCR sul PID atteso: dopo 3 s si abbandona
+        let other: Vec<u8> = (0..20).flat_map(|_| packet(300, None)).collect();
+        assert!(matches!(r.push_at(&other, t0), ResyncStep::Wait));
+        assert!(matches!(
+            r.push_at(&other, t0 + Duration::from_millis(3100)),
+            ResyncStep::GiveUp
+        ));
+    }
+
+    #[test]
+    fn resync_waits_for_a_slow_provider_to_catch_up() {
+        // il provider riparte 8 s indietro e manda i dati in tempo reale: servono ~8 s per
+        // arrivare al punto già inoltrato, ben oltre i 3 s senza PCR, ma i PCR continuano
+        let t0 = Instant::now();
+        let mut r = Resync::new_at(256, 10.0, t0);
+        let mut ms = 0u64;
+        let mut t = 2.0;
+        let out = loop {
+            match r.push_at(&chunk(t, t + 0.5), t0 + Duration::from_millis(ms)) {
+                ResyncStep::Wait => {}
+                ResyncStep::Forward(d) => break d,
+                ResyncStep::GiveUp => panic!("abbandonata dopo {} ms", ms),
+            }
+            t += 0.5;
+            ms += 500;
+            assert!(ms < 20_000, "ripresa mai avvenuta");
+        };
+        assert!((pcrs(&out)[0] - 10.1).abs() < 0.001);
+        assert!(ms >= 7_500, "ha atteso il provider: {} ms", ms);
+    }
+
+    /// Risposta HTTP finta: i pezzi arrivano dopo le pause indicate.
+    fn fake_response(parts: Vec<(u64, Vec<u8>)>) -> reqwest::Response {
+        let stream = futures_util::stream::unfold(parts.into_iter(), |mut it| async move {
+            let (pause, data) = it.next()?;
+            tokio::time::sleep(Duration::from_millis(pause)).await;
+            Some((Ok::<Vec<u8>, std::io::Error>(data), it))
+        });
+        reqwest::Response::from(http::Response::new(reqwest::Body::wrap_stream(stream)))
+    }
+
+    #[test]
+    fn provider_closing_every_few_seconds_keeps_streaming() {
+        // a ogni connessione il provider rimanda 20 s già trasmessi più 2 s nuovi e chiude:
+        // 7 riconnessioni (più del limite di 5) che però portano sempre video nuovo
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .unwrap();
+        let out = rt.block_on(async {
+            let first = fake_response(vec![(0, chunk(0.0, 22.0))]);
+            let mut next_end = 22.0;
+            let mut left = 7;
+            let reopen = move || {
+                let resp = if left > 0 {
+                    left -= 1;
+                    let end = next_end + 2.0;
+                    let r = fake_response(vec![(0, chunk(next_end - 20.0, end))]);
+                    next_end = end;
+                    Ok(r)
+                } else {
+                    Err("offline".to_string())
+                };
+                async move { resp }
+            };
+            let mut out: Vec<u8> = Vec::new();
+            pump_live(first, reopen, &mut out, None, None, f64::INFINITY, false).await;
+            out
+        });
+        let p = pcrs(&out);
+        assert!(p.windows(2).all(|w| w[1] > w[0] && w[1] - w[0] < 0.11));
+        assert!(
+            (p.last().unwrap() - 35.9).abs() < 0.001,
+            "tutte le 7 riconnessioni, ultimo PCR {}",
+            p.last().unwrap()
+        );
+    }
+
+    #[test]
+    fn newer_exclusive_stream_closes_the_old_one() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .unwrap();
+        let (old_secs, new_len) = rt.block_on(async {
+            // vecchio flusso: 3 s di dati a pezzi, e se cade si riconnetterebbe all'infinito
+            let slow: Vec<(u64, Vec<u8>)> = (0..30)
+                .map(|i| (100, chunk(i as f64 * 0.1, i as f64 * 0.1 + 0.1)))
+                .collect();
+            let old = async {
+                let t = Instant::now();
+                let reopen = || async { Ok(fake_response(vec![(100, chunk(50.0, 51.0))])) };
+                let mut out: Vec<u8> = Vec::new();
+                pump_live(
+                    fake_response(slow),
+                    reopen,
+                    &mut out,
+                    None,
+                    None,
+                    f64::INFINITY,
+                    true,
+                )
+                .await;
+                t.elapsed().as_secs_f64()
+            };
+            // dopo 300 ms parte un nuovo canale
+            let new = async {
+                tokio::time::sleep(Duration::from_millis(300)).await;
+                let reopen = || async { Err::<reqwest::Response, String>("offline".into()) };
+                let mut out: Vec<u8> = Vec::new();
+                let first = fake_response(vec![(0, chunk(0.0, 1.0))]);
+                pump_live(first, reopen, &mut out, None, None, f64::INFINITY, true).await;
+                out.len()
+            };
+            futures_util::future::join(old, new).await
+        });
+        assert!(
+            old_secs < 1.0,
+            "il vecchio flusso deve chiudersi subito, durato {} s",
+            old_secs
+        );
+        assert!(new_len > 0);
+    }
+
+    #[test]
+    fn keep_all_forwards_the_whole_burst_and_still_resumes() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .unwrap();
+        let out = rt.block_on(async {
+            let first = fake_response(vec![(0, chunk(0.0, 10.0))]);
+            let mut rest = vec![fake_response(vec![(0, chunk(5.0, 12.0))])];
+            let reopen = move || {
+                let next = rest.pop();
+                async move { next.ok_or_else(|| "offline".to_string()) }
+            };
+            let mut out: Vec<u8> = Vec::new();
+            pump_live(first, reopen, &mut out, None, None, f64::INFINITY, false).await;
+            out
+        });
+        let p = pcrs(&out);
+        assert!(p[0].abs() < 0.001, "tutta la raffica, dall'inizio");
+        assert!(p.windows(2).all(|w| w[1] > w[0] && w[1] - w[0] < 0.11));
+        assert!((p.last().unwrap() - 11.9).abs() < 0.001);
+    }
+
+    #[test]
+    fn dropped_connection_resumes_without_repeating() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .unwrap();
+        let out = rt.block_on(async {
+            // prima connessione: raffica 0-10 s, poi tempo reale fino a 10,3 s, poi cade
+            let first = fake_response(vec![(0, chunk(0.0, 10.0)), (400, chunk(10.0, 10.3))]);
+            // seconda: il server rimanda la sua raffica (5-12 s), poi cade di nuovo
+            let mut rest = vec![fake_response(vec![(0, chunk(5.0, 12.0))])];
+            let reopen = move || {
+                let next = rest.pop();
+                async move { next.ok_or_else(|| "offline".to_string()) }
+            };
+            let mut out: Vec<u8> = Vec::new();
+            pump_live(first, reopen, &mut out, None, None, 3.0, false).await;
+            out
+        });
+        let p = pcrs(&out);
+        assert!(!p.is_empty());
+        assert!(
+            p.windows(2).all(|w| w[1] > w[0]),
+            "nessun PCR ripetuto o all'indietro"
+        );
+        assert!(
+            p[0] >= 10.2 - 3.0 - 0.11,
+            "raffica tagliata a keep, inizio {}",
+            p[0]
+        );
+        assert!(
+            (p.last().unwrap() - 11.9).abs() < 0.001,
+            "arriva in fondo alla seconda"
+        );
+        // nessun salto: la seconda connessione riprende esattamente dopo la prima
+        assert!(p.windows(2).all(|w| w[1] - w[0] < 0.11));
     }
 
     // --- PAT/PMT sintetiche ---

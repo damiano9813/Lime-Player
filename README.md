@@ -192,7 +192,7 @@ PATH.
 - **Proxy locale**: i server Xtream non inviano header CORS, quindi `fetch` di mpegts.js e hls.js verrebbe bloccato dal WebView. `main.rs` avvia un proxy HTTP su `127.0.0.1` (porta casuale, protetto da un token casuale) che aggiunge CORS, imposta lo User-Agent `IPTVSmartersPro`, segue i redirect, inoltra `Range` (seek nei VOD) e riscrive le playlist HLS.
 - **Live**: MPEG-TS via mpegts.js; dopo un errore si riprova e al secondo tentativo si passa a HLS (hls.js). Il formato si sceglie nelle Impostazioni ("Forza ffmpeg" converte sempre l'audio).
 - **Codec**: l'app riconosce i codec non supportati (dai metadati dello stream e controllando che audio e video vengano davvero decodificati) e passa da sola alla conversione ffmpeg. La scelta viene ricordata per ogni canale, così lo zapping successivo è immediato. Film ed episodi vengono analizzati con ffprobe prima della riproduzione; il seek riavvia ffmpeg dal punto scelto.
-- **Buffer adattivo (live)**: parte con circa 1 s di buffer, recupera il ritardo accelerando leggermente la velocità (fino a 1,15×, con tono preservato) e aumenta il buffer solo se si verifica uno scatto; dopo 45 s senza scatti torna a ridurlo. Nelle Impostazioni "Minimo / Medio / Stabile" fissa il buffer minimo.
+- **Buffer misurato (live)**: con "Minimo" e "Medio" il player guarda come arrivano i dati: se il provider li mandasse in tempo reale la fine del buffer avanzerebbe di 1 s al secondo, quindi il calo massimo di (fine del buffer - tempo reale) nell'ultimo minuto è il buffer che la pausa peggiore del provider ha consumato (`XPCore.arrivalDrawdown`). Dopo 15 s di osservazione l'obiettivo diventa quella pausa più un quarto, più 0,4 s (`measuredTarget`, al massimo 8 s), mai sotto il minimo del preset (0,6 s / 1,5 s); prima si usa l'obiettivo salvato dal canale precedente. Uno scatto aggiunge comunque un margine (+50%) che scende di 0,25 s ogni 15 s dopo un minuto senza altri scatti. Il player recupera il ritardo accelerando leggermente (fino a 1,15×, con tono preservato). La riga sotto le informazioni del canale mostra buffer, obiettivo e pausa peggiore misurata. Con "Stabile" (predefinito) parte dalla raffica iniziale e non insegue la diretta: rallenta solo se il buffer scende sotto metà dell'obiettivo (6 s) e salta in avanti solo oltre 90 s di ritardo. Con HLS il preset decide quanti segmenti tenere dalla diretta (2 / 3 / 4).
 - Prima di aprire il player esterno lo stream interno viene chiuso, per non superare il limite di connessioni dell'account.
 - **Credenziali**: la password sta in Gestione credenziali di Windows (Credenziali generiche,
   voce `Xtream Player/<utente>@<server>`, crate `keyring`); `%APPDATA%\com.xtreamplayer.desktop\credentials.json`
@@ -222,8 +222,34 @@ PATH.
   All'avvio si mostrano subito quelle salvate (se hanno meno di 24 ore) e si aggiornano in
   background se hanno più di 10 minuti; senza rete si usa comunque l'ultima lista. Il pulsante
   di aggiornamento scarica sempre dal server; "Esci" cancella anche la cache.
-- **Raffica iniziale**: su tutti i percorsi live il proxy salta i 20-30 s di video vecchio che
-  molti server inviano alla connessione e passa al player (o a ffmpeg) solo il bordo live.
+- **Raffica iniziale**: alla connessione molti server inviano in pochi secondi 10-30 s di video
+  già trasmesso, poi proseguono in tempo reale. Con il preset "Stabile" (predefinito, `keep=all`)
+  il proxy la passa subito tutta: il video parte in meno di un secondo con decine di secondi di
+  buffer, ma resta indietro rispetto alla diretta di quanto è lunga la raffica. Con "Minimo" e
+  "Medio" il proxy aspetta la fine della raffica (sui canali 4K anche 2-3 s) e passa al player
+  (o a ffmpeg) solo il bordo live più il buffer obiettivo e un secondo di margine (`keep=`
+  nell'URL, 1-10 s); convertendo il video se ne tengono 2,5 s, perché la raffica va codificata.
+- **Codec dalla PMT**: il proxy legge le tracce del canale nei primi millisecondi; se l'audio
+  (AC-3, E-AC-3, DTS) o il video (MPEG-2, HEVC non supportato) vanno convertiti, il player passa
+  subito a ffmpeg invece di accorgersene dai dati e ripartire con una nuova connessione.
+- **Riconnessione live** (`ts.rs`, `pump_live`): se la connessione al provider cade o non manda
+  dati per 6 s, il proxy ne apre un'altra senza chiudere il player. Il server rimanda la sua
+  raffica (alcuni provider anche 10 minuti già trasmessi): il proxy scarta i pacchetti con PCR non
+  successivo all'ultimo inoltrato e riprende da lì, quindi il player riceve un flusso continuo e
+  vede solo una pausa nei dati. Un provider lento ha fino a 30 s per arrivare a quel punto,
+  purché mandi PCR almeno ogni 3 s. Se la ripresa è impossibile (PCR più di 30 s avanti o più di
+  un'ora indietro, nessun PCR, attesa troppo lunga) il proxy chiude il flusso: dati con timestamp
+  non continui il player li scarterebbe e resterebbe fermo, mentre a flusso chiuso
+  (`LOADING_COMPLETE` di mpegts.js) riavvia subito il canale. Le riconnessioni che non portano
+  video nuovo sono al massimo 5 al minuto; quelle che lo portano non contano, perché alcuni
+  provider chiudono la connessione ogni pochi secondi.
+- **Una connessione alla volta**: un flusso live superato da uno più nuovo (cambio canale,
+  passaggio a ffmpeg) si chiude subito e non si riconnette (`LIVE_GEN`): con gli account a una
+  sola connessione due flussi si ruberebbero la connessione a vicenda.
+- **Scatti nei live**: dopo uno scatto il video resta fermo finché non tornano tre quarti del
+  buffer obiettivo (0,8-4 s), invece di ripartire con pochi fotogrammi e scattare di nuovo; un
+  buco nella timeline (discontinuità dei timestamp) entro 30 s viene saltato. Se per 15 s non
+  arrivano dati il canale si riavvia.
 - Tasto **Backspace**: torna all'ultimo contenuto visto.
 - **Guida TV**: programma in onda e successivo nel pannello info (con barra di avanzamento),
   nell'OSD a schermo intero e nelle righe visibili della lista (richiesta solo a scroll fermo,

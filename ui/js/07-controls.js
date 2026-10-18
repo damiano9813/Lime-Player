@@ -6,9 +6,11 @@ const seek = $('seek'), volume = $('volume'), wrap = $('player-wrap');
 let seeking = false;
 
 function setRangeFill(el) { const p = ((el.value - el.min) / (el.max - el.min)) * 100; el.style.setProperty('--p', p + '%'); }
+// in attesa del buffer dopo uno scatto il video è fermo, ma per l'utente sta riproducendo
+const isPaused = () => video.paused && !P.rebuffering;
 function updatePlayButton() {
-  $('btn-play').innerHTML = video.paused || !S.current ? ICONS.play : ICONS.pause;
-  rowsLayer.querySelectorAll('.eq').forEach((e) => e.classList.toggle('paused', video.paused));
+  $('btn-play').innerHTML = isPaused() || !S.current ? ICONS.play : ICONS.pause;
+  rowsLayer.querySelectorAll('.eq').forEach((e) => e.classList.toggle('paused', isPaused()));
 }
 function updateVolumeUi() {
   $('btn-mute').innerHTML = video.muted || video.volume === 0 ? ICONS.mute : ICONS.vol;
@@ -28,6 +30,15 @@ function updateTimeUi() {
 
 function togglePlay() {
   if (!S.current) return;
+  if (P.rebuffering) {
+    // pausa durante l'attesa del buffer: resta fermo, senza ripartire da solo
+    stopRebuffer();
+    setSpinner(false);
+    setStatus('In pausa');
+    updatePlayButton();
+    osd(ICONS.pause.replace('w-5 h-5', 'w-8 h-8'));
+    return;
+  }
   if (video.paused) {
     osd(ICONS.play.replace('w-5 h-5', 'w-8 h-8'));
     if (S.currentMode === 'live' && !P.mpegts && !P.hls && !video.getAttribute('src')) { playItem(S.current, 'live'); return; }
@@ -220,7 +231,7 @@ $('settings-panel').addEventListener('click', (ev) => {
   if (!b) return;
   const key = b.closest('.seg').dataset.setting, v = b.dataset.v;
   if (key === 'lat') {
-    L.mode = LAT_PRESETS[v] ? v : 'min';
+    L.mode = LAT_PRESETS[v] ? v : LAT_DEFAULT;
     lsSet('xp.latMode', L.mode);
     latLoad();
     if (S.current && S.currentMode === 'live' && P.hls) playItem(S.current, 'live');

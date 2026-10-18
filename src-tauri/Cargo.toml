@@ -29,6 +29,10 @@ tauri-plugin-single-instance = "2"
 # dimensione, posizione e stato massimizzato della finestra tra un avvio e l'altro
 tauri-plugin-window-state = "2"
 
+[dev-dependencies]
+# risposte HTTP finte per i test della riconnessione live (già usato da reqwest)
+http = "1"
+
 [profile.release]
 codegen-units = 1
 lto = true

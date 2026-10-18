@@ -68,10 +68,11 @@
   }
   // `opts.live`: flusso live MPEG-TS, il proxy salta la raffica iniziale del server
   // `opts.sid`: sessione con cui il backend registra le tracce lette dalla PMT
+  // `opts.keep`: secondi di raffica da tenere (il buffer con cui parte il player) o 'all'
   function proxyUrl(proxy, url, opts) {
     if (!proxy) return url;
     const o = opts || {};
-    return `http://127.0.0.1:${proxy.port}/p/${proxy.token}?u=${encodeURIComponent(url)}${o.live ? '&live=1' : ''}${o.sid ? '&sid=' + enc(o.sid) : ''}`;
+    return `http://127.0.0.1:${proxy.port}/p/${proxy.token}?u=${encodeURIComponent(url)}${o.live ? '&live=1' : ''}${o.sid ? '&sid=' + enc(o.sid) : ''}${o.keep ? '&keep=' + o.keep : ''}`;
   }
   // r.at: traccia audio (-map 0:a:N); opts.q: qualità, opts.ac: 'orig' per il 5.1,
   // opts.ch: canali della traccia sorgente se noti, opts.sid: sessione per le tracce live
@@ -82,6 +83,7 @@
     if (opts.ac === 'orig') q.set('ac', 'orig');
     if (opts.ch > 0) q.set('ch', String(opts.ch));
     if (opts.sid) q.set('sid', opts.sid);
+    if (opts.keep) q.set('keep', String(opts.keep));
     // film: tracce di sottotitoli estratte dallo stesso ffmpeg (servite da /s/ con lo stesso sid)
     if (opts.subs && opts.subs.length) q.set('subs', opts.subs.join(','));
     return `http://127.0.0.1:${proxy.port}/t/${proxy.token}?${q.toString()}`;
@@ -223,6 +225,24 @@
     };
   }
 
+  // Conversione decisa dalla PMT del live (tracce lette dal proxy nei primi millisecondi),
+  // prima che i dati arrivino al player: evita di partire in diretta e ripartire con ffmpeg.
+  // L'audio MP2 da solo resta a mediaInfoRoute, che dalla risoluzione capisce se il video
+  // DVB è interlacciato e va convertito insieme all'audio.
+  function pmtRoute(tracks, caps) {
+    const c = caps || {};
+    const video = (tracks || []).find((t) => t.kind === 'video');
+    const audio = (tracks || []).find((t) => t.kind === 'audio');
+    const wanted = { v: 'copy', a: 'copy' }, bad = [];
+    const vc = video ? video.codec : '';
+    if (['mpeg2video', 'mpeg4', 'vc1'].includes(vc) || (vc === 'hevc' && !c.hevc)) { wanted.v = 'h264'; bad.push('video ' + vc); }
+    const ac = audio ? audio.codec : '';
+    // aac_latm lo converte già mpegts.js
+    const audioOk = !ac || ac === 'aac_latm' || audioCopyOk(ac, c.opus);
+    if (!audioOk && (ac !== 'mp2' || wanted.v === 'h264')) { wanted.a = 'aac'; bad.push('audio ' + ac); }
+    return { wanted, bad };
+  }
+
   // Decide cosa convertire dai metadati di mpegts.js (MEDIA_INFO) sul percorso diretto.
   // `check.videoOk(codec)` e `check.audioOk(codec)` dicono se WebView2 decodifica il codec.
   function mediaInfoRoute(mi, mode, check) {
@@ -246,7 +266,10 @@
 
   // ------------------------------------------------------------------ buffer adattivo
   // un passo del controller: salto al bordo live se troppo indietro, altrimenti velocità
-  function latencyStep(ahead, target) {
+  // `chase` falso (preset "Stabile", partito dalla raffica): il ritardo dalla diretta resta
+  // quello che è, si rallenta solo se il buffer cala e si salta solo oltre 90 s di ritardo
+  function latencyStep(ahead, target, chase) {
+    if (chase === false) return { jump: ahead > 90, rate: ahead < target * 0.5 ? 0.97 : 1 };
     if (ahead > target + 4) return { jump: true, rate: 1 };
     let rate = 1;
     if (ahead > target + 0.25) rate = Math.min(1.15, 1 + (ahead - target) * 0.08);
@@ -255,8 +278,40 @@
   }
   // dopo uno scatto il buffer obiettivo cresce del 50% (almeno 0,4 s), fino a 8 s
   const stallTarget = (target) => Math.min(8, target + Math.max(0.4, target * 0.5));
-  // dopo un periodo stabile scende di 0,15 s, mai sotto il minimo del preset
-  const relaxTarget = (target, floor) => Math.max(floor, target - 0.15);
+  // il margine aggiunto da uno scatto si riduce di 0,25 s a ogni passo senza altri scatti
+  const relaxBoost = (boost) => Math.max(0, boost - 0.25);
+
+  // Buffer misurato. Campioni [istante, fine del buffer] in secondi: se il provider mandasse i
+  // dati perfettamente in tempo reale, la fine del buffer avanzerebbe di 1 s al secondo e
+  // (fine - istante) resterebbe costante. Il calo massimo di quel valore tra due campioni è il
+  // buffer che la pausa peggiore del provider avrebbe consumato.
+  function arrivalDrawdown(samples) {
+    let peak = -Infinity, worst = 0;
+    for (const [w, e] of samples || []) {
+      const d = e - w;
+      if (d > peak) peak = d;
+      else if (peak - d > worst) worst = peak - d;
+    }
+    return worst;
+  }
+  // buffer che regge la pausa peggiore misurata, con un quarto di margine più 0,4 s (max 8 s)
+  const measuredTarget = (drawdown) => Math.min(8, Math.max(0, drawdown) * 1.25 + 0.4);
+  // secondi della raffica iniziale che il proxy lascia al player: il buffer obiettivo più un
+  // margine, così si parte subito con il buffer pieno invece di riempirlo guardando (1-10 s)
+  const burstKeep = (target) => Math.min(10, Math.max(1, Math.round((target + 1) * 10) / 10));
+  // Buco nella timeline (discontinuità dei timestamp, dati persi in una riconnessione): il
+  // video si fermerebbe sul bordo. `ranges` = [[inizio, fine], ...] del buffer; restituisce il
+  // punto da cui ripartire se il buco è entro `maxGap` secondi, altrimenti -1.
+  function gapJump(ranges, t, maxGap) {
+    const cur = (ranges || []).find(([s, e]) => t >= s - 0.05 && t < e);
+    if (cur && cur[1] - t > 0.3) return -1;
+    const next = (ranges || []).find(([s]) => s > t + 0.01);
+    if (!next || next[0] - t > (maxGap || 30)) return -1;
+    return next[0] + 0.05;
+  }
+  // buffer da riavere prima di ripartire dopo uno scatto: ripartire con pochi fotogrammi
+  // darebbe una serie di micro-scatti
+  const rebufferNeed = (target) => Math.min(4, Math.max(0.8, target * 0.75));
 
   // ------------------------------------------------------------------ guida TV e serie
   // programma in onda e successivo (orari in secondi Unix)
@@ -396,10 +451,10 @@
     escapeHtml, normKey, initials, fmtTime, debounce, highlight,
     buildStreamUrl, proxyUrl, transcodeUrl, subtitleUrl, timeshiftStart, timeshiftUrl,
     normLang, langName, codecName, channelsLabel, trackLabel, pickTrack, audioCopyOk, audioTrackRoute, PREFERRED_LANGS,
-    SETTINGS_DEFAULTS, normalizeSettings,
+    SETTINGS_DEFAULTS, normalizeSettings, pmtRoute,
     currentAndNext, epgProgress, archivedPrograms, hasCodecs, episodeLabel, nextEpisode,
     guideDays, guidePastDays, layoutPrograms, programState, timeTicks, visibleRows, matchProgram,
     audioMime, probeVideoOk, probeAudioOk, mergeRoute, describeRoute, normalizeSavedRoute, mediaInfoRoute,
-    latencyStep, stallTarget, relaxTarget,
+    latencyStep, stallTarget, relaxBoost, arrivalDrawdown, measuredTarget, burstKeep, gapJump, rebufferNeed,
   };
 });

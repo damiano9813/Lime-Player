@@ -261,8 +261,31 @@ test('buffer adattivo: crescita dopo scatto e rilascio', () => {
   assert.equal(X.stallTarget(0.6), 1.0);
   assert.equal(X.stallTarget(2), 3);
   assert.equal(X.stallTarget(7), 8);
-  assert.ok(Math.abs(X.relaxTarget(1.0, 0.6) - 0.85) < 1e-9);
-  assert.equal(X.relaxTarget(0.65, 0.6), 0.6);
+  assert.equal(X.relaxBoost(1.0), 0.75);
+  assert.equal(X.relaxBoost(0.1), 0);
+});
+
+test('buffer misurato: pausa peggiore del provider', () => {
+  // flusso regolare: la fine del buffer avanza di 1 s al secondo, a pezzi di 0,25 s
+  const steady = [];
+  for (let i = 0; i <= 80; i++) steady.push([i * 0.25, 10 + Math.floor(i) * 0.25]);
+  assert.equal(X.arrivalDrawdown(steady), 0);
+  // ogni 4 s il provider resta fermo per 2 s e poi recupera tutto insieme: si consumano 2 s
+  const bursty = [];
+  let e = 10;
+  for (let w = 0; w <= 20; w += 0.25) {
+    if (w % 4 < 2) e = 10 + w; // in pausa la fine del buffer resta dov'era
+    bursty.push([w, e]);
+  }
+  assert.ok(Math.abs(X.arrivalDrawdown(bursty) - 2) < 1e-9, `calo ${X.arrivalDrawdown(bursty)}`);
+  // un salto in avanti (raffica, discontinuità) non conta come pausa
+  assert.equal(X.arrivalDrawdown([[0, 10], [1, 11], [2, 30], [3, 31]]), 0);
+  assert.equal(X.arrivalDrawdown([]), 0);
+
+  assert.equal(X.measuredTarget(0), 0.4);
+  assert.equal(X.measuredTarget(2), 2.9);
+  assert.equal(X.measuredTarget(20), 8);
+  assert.equal(X.measuredTarget(-1), 0.4);
 });
 
 test('URL con traccia audio, qualità, 5.1, sessione e sottotitoli', () => {
@@ -441,4 +464,65 @@ test('pulizia di posizioni e percorsi salvati', () => {
   ];
   assert.deepEqual(X.staleEntries(entries, now, limits).sort(), ['b', 'senza-data', 'vecchia']);
   assert.deepEqual(X.staleEntries([], now, limits), []);
+});
+
+test('live: raffica tenuta, buchi nella timeline e ripartenza dopo uno scatto', () => {
+  const proxy = { port: 5000, token: 'tk' };
+  assert.equal(X.proxyUrl(proxy, 'http://h/1.ts', { live: true, sid: 's', keep: 4 }),
+    'http://127.0.0.1:5000/p/tk?u=http%3A%2F%2Fh%2F1.ts&live=1&sid=s&keep=4');
+  assert.equal(X.proxyUrl(proxy, 'http://h/1.ts', { live: true }).includes('keep'), false);
+  const t = new URL(X.transcodeUrl(proxy, 'http://h/1.ts', { v: 'copy', a: 'aac' }, { live: true, keep: 4 }));
+  assert.equal(t.searchParams.get('keep'), '4');
+  const t0 = new URL(X.transcodeUrl(proxy, 'http://h/1.ts', { v: 'h264', a: 'aac' }, { live: true, keep: 0 }));
+  assert.equal(t0.searchParams.has('keep'), false);
+
+  // il proxy tiene il buffer obiettivo più un secondo, tra 1 e 10 s
+  assert.equal(X.burstKeep(3), 4);
+  assert.equal(X.burstKeep(0.6), 1.6);
+  assert.equal(X.burstKeep(12), 10);
+  assert.equal(X.burstKeep(-5), 1);
+
+  // fermo sul bordo di un intervallo con un altro poco più avanti: si salta il buco
+  assert.ok(Math.abs(X.gapJump([[0, 10], [10.4, 20]], 9.9) - 10.45) < 1e-9);
+  // posizione fuori da ogni intervallo, prima del successivo
+  assert.ok(Math.abs(X.gapJump([[0, 5], [8, 20]], 6) - 8.05) < 1e-9);
+  // dentro un intervallo con margine: niente salto
+  assert.equal(X.gapJump([[0, 10], [10.4, 20]], 5), -1);
+  // buco troppo grande o nessun intervallo successivo
+  assert.equal(X.gapJump([[0, 10], [50, 60]], 9.9), -1);
+  assert.equal(X.gapJump([[0, 10]], 9.9), -1);
+  assert.equal(X.gapJump([], 0), -1);
+
+  // dopo uno scatto si riparte con tre quarti del buffer obiettivo, tra 0,8 e 4 s
+  assert.equal(X.rebufferNeed(3), 2.25);
+  assert.equal(X.rebufferNeed(0.6), 0.8);
+  assert.equal(X.rebufferNeed(8), 4);
+});
+
+test('live: conversione decisa dalla PMT prima dei dati', () => {
+  const tr = (kind, codec) => ({ kind, codec });
+  const caps = { hevc: false, opus: false };
+  assert.deepEqual(X.pmtRoute([tr('video', 'h264'), tr('audio', 'aac')], caps).bad, []);
+  assert.deepEqual(X.pmtRoute([tr('video', 'h264'), tr('audio', 'eac3')], caps).wanted, { v: 'copy', a: 'aac' });
+  assert.deepEqual(X.pmtRoute([tr('video', 'h264'), tr('audio', 'ac3'), tr('audio', 'aac')], caps).wanted, { v: 'copy', a: 'aac' },
+    'conta la prima traccia audio');
+  assert.deepEqual(X.pmtRoute([tr('video', 'mpeg2video'), tr('audio', 'mp2')], caps).wanted, { v: 'h264', a: 'aac' });
+  // MP2 da solo: decide mediaInfoRoute (video DVB forse interlacciato)
+  assert.deepEqual(X.pmtRoute([tr('video', 'h264'), tr('audio', 'mp2')], caps).bad, []);
+  assert.deepEqual(X.pmtRoute([tr('video', 'hevc'), tr('audio', 'aac')], caps).wanted, { v: 'h264', a: 'copy' });
+  assert.deepEqual(X.pmtRoute([tr('video', 'hevc'), tr('audio', 'aac')], { hevc: true }).bad, []);
+  assert.deepEqual(X.pmtRoute([tr('video', 'h264'), tr('audio', 'aac_latm')], caps).bad, []);
+  assert.deepEqual(X.pmtRoute([], caps).bad, []);
+});
+
+test('live: preset Stabile, senza inseguire la diretta', () => {
+  // resta indietro quanto serve: niente accelerazione, salto solo oltre 90 s
+  assert.deepEqual(X.latencyStep(25, 6, false), { jump: false, rate: 1 });
+  assert.deepEqual(X.latencyStep(2, 6, false), { jump: false, rate: 0.97 });
+  assert.deepEqual(X.latencyStep(95, 6, false), { jump: true, rate: 1 });
+  // gli altri preset inseguono come prima
+  assert.equal(X.latencyStep(25, 6).jump, true);
+  const proxy = { port: 5000, token: 'tk' };
+  assert.ok(X.proxyUrl(proxy, 'http://h/1.ts', { live: true, keep: 'all' }).endsWith('&keep=all'));
+  assert.equal(new URL(X.transcodeUrl(proxy, 'http://h/1.ts', { v: 'h264', a: 'aac' }, { live: true, keep: 'all' })).searchParams.get('keep'), 'all');
 });

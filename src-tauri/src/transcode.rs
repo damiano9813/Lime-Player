@@ -16,7 +16,7 @@ use crate::media::{
     build_ffmpeg_args, build_subtitle_args, media_tools, tokio_cmd, FfmpegJob, Quality,
 };
 use crate::proxy::write_simple;
-use crate::ts::pump_live;
+use crate::ts::{parse_keep, pump_live};
 use crate::util::{describe_reqwest_error, preview, CORS_HEADERS};
 
 /// Apre lo stream del provider. Dopo un cambio canale il provider può contare ancora la
@@ -170,9 +170,21 @@ pub async fn handle_transcode(
     }
     let _stop_guard = StopOnDrop(stop.clone());
     let live_sid = sid.clone();
+    let keep = parse_keep(params.get("keep").map(String::as_str));
     if let (Some(resp), Some(mut stdin)) = (upstream, child.stdin.take()) {
+        let (client, target) = (client.clone(), target.clone());
         tokio::spawn(async move {
-            pump_live(resp, &mut stdin, Some(stop.as_ref()), live_sid.as_deref()).await;
+            let reopen = || open_upstream(&client, &target);
+            pump_live(
+                resp,
+                reopen,
+                &mut stdin,
+                Some(stop.as_ref()),
+                live_sid.as_deref(),
+                keep,
+                true,
+            )
+            .await;
             let _ = stdin.shutdown().await;
         });
     }

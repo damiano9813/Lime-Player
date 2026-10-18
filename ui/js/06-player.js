@@ -12,6 +12,8 @@ const P = {
   sid: '', tracksTimer: null, tracks: { from: '', audio: [], subs: [] }, probe: null, subIndex: -1, autoTracks: false,
   // tracce di sottotitoli che il processo ffmpeg del film in corso sta estraendo
   sessionSubs: [], prefAudio: 0, resumeRetryAt: 0,
+  // live: in attesa che torni il buffer dopo uno scatto (rebufferGate)
+  rebuffering: false, rebufTimer: null,
 };
 S.caps = { ffmpeg: null, ffprobe: null, h264_encoder: null, version: '' };
 
@@ -75,7 +77,7 @@ function watchLiveTracks(item, sid) {
   clearInterval(P.tracksTimer);
   let tries = 0, busy = false;
   P.tracksTimer = setInterval(async () => {
-    if (S.current !== item || P.sid !== sid || ++tries > 30) { clearInterval(P.tracksTimer); P.tracksTimer = null; return; }
+    if (S.current !== item || P.sid !== sid || ++tries > 75) { clearInterval(P.tracksTimer); P.tracksTimer = null; return; }
     if (busy) return;
     busy = true;
     let list = null;
@@ -85,8 +87,14 @@ function watchLiveTracks(item, sid) {
     clearInterval(P.tracksTimer); P.tracksTimer = null;
     P.tracks = { from: 'ts', audio: list.filter((t) => t.kind === 'audio'), subs: list.filter((t) => t.kind === 'subtitle') };
     renderTracksMenu();
+    // codec che WebView2 non decodifica: si passa subito a ffmpeg, senza aspettare che il player
+    // riceva i dati e se ne accorga (una connessione e una raffica in meno)
+    if (P.route.mode === 'direct' && !P.hadPlaying) {
+      const { wanted, bad } = XPCore.pmtRoute(list, { hevc: HEVC_OK, opus: OPUS_OK });
+      if (bad.length && await escalate(item, 'live', wanted, 'Codec non supportato da WebView2 (' + bad.join(', ') + ')')) return;
+    }
     applyPreferredTracks(item);
-  }, 500);
+  }, 200);
 }
 // lingua preferita: si applica una volta per contenuto, poi decide l'utente
 function applyPreferredTracks(item) {
@@ -181,19 +189,64 @@ async function escalate(item, mode, wanted, reason) {
   return true;
 }
 
-// --- buffer adattivo per i live: il più piccolo possibile, cresce solo se ci sono scatti ---
+// --- buffer per i live ---
+// "Minimo" e "Medio" partono vicino alla diretta: il proxy aspetta la fine della raffica
+// iniziale del server e ne tiene solo il buffer obiettivo, e il player insegue la diretta.
+// L'obiettivo è misurato: dall'arrivo dei dati si ricava la pausa peggiore del provider
+// nell'ultimo minuto e si tiene il buffer che la regge (mai sotto il minimo del preset); uno
+// scatto aggiunge un margine che si riduce se non ne seguono altri.
+// "Stabile" (predefinito) riceve tutta la raffica (keep=all): parte in un attimo con decine di
+// secondi di buffer e non insegue la diretta (chase: false), quindi resta indietro di quanto
+// era lunga la raffica (10-30 s) ma non va mai in buffering.
 const LAT_PRESETS = {
   min: { start: 1.0, floor: 0.6 },
-  bal: { start: 2.5, floor: 2.0 },
-  stable: { start: 5.0, floor: 4.0 },
+  bal: { start: 2.5, floor: 1.5 },
+  stable: { start: 6.0, floor: 5.0, chase: false },
 };
-const L = { mode: 'min', target: 1, timer: null, lastStall: 0, lastDecrease: 0, lastJump: 0, stalls: 0, ahead: 0 };
-L.mode = LAT_PRESETS[lsGet('xp.latMode', 'min')] ? lsGet('xp.latMode', 'min') : 'min';
+const LAT_DEFAULT = 'stable';
+// finestra della misura e osservazione minima prima di usarla (secondi)
+const LAT_WINDOW = 60, LAT_MIN_SPAN = 15;
+const latChase = () => latPreset().chase !== false;
+const L = {
+  mode: LAT_DEFAULT, target: 3, timer: null, lastStall: 0, lastDecrease: 0, lastJump: 0, lastSave: 0, stalls: 0, ahead: 0,
+  // obiettivo salvato (dal canale precedente), campioni [istante, fine del buffer], pausa peggiore
+  // misurata, obiettivo che ne deriva (0 finché la misura non basta) e margine dopo gli scatti
+  saved: 3, samples: [], drawdown: 0, measured: 0, boost: 0,
+};
+L.mode = LAT_PRESETS[lsGet('xp.latMode', LAT_DEFAULT)] ? lsGet('xp.latMode', LAT_DEFAULT) : LAT_DEFAULT;
 function latPreset() { return LAT_PRESETS[L.mode]; }
 function latLoad() {
   const p = latPreset();
   const saved = Number(lsGet('xp.latTarget.' + L.mode, p.start));
-  L.target = Math.min(8, Math.max(p.floor, isFinite(saved) ? saved : p.start));
+  L.saved = Math.min(8, Math.max(p.floor, isFinite(saved) ? saved : p.start));
+  L.target = L.saved;
+  L.samples = []; L.drawdown = 0; L.measured = 0; L.boost = 0;
+}
+// un campione per tick: quanto è avanzata la fine del buffer rispetto al tempo reale
+function latSample(now) {
+  const b = video.buffered;
+  if (!b.length) return;
+  const w = now / 1000, e = b.end(b.length - 1), s = L.samples;
+  // la fine che torna indietro è un nuovo flusso (riavvio del player): la misura ricomincia
+  if (s.length && e < s[s.length - 1][1] - 0.5) s.length = 0;
+  s.push([w, e]);
+  while (s.length && w - s[0][0] > LAT_WINDOW) s.shift();
+}
+// obiettivo = massimo tra minimo del preset, buffer misurato (o quello salvato finché la misura
+// non basta) e margine aggiunto dagli scatti
+function latRetarget(now) {
+  const p = latPreset(), s = L.samples;
+  if (s.length && s[s.length - 1][0] - s[0][0] >= LAT_MIN_SPAN) {
+    L.drawdown = XPCore.arrivalDrawdown(s);
+    L.measured = XPCore.measuredTarget(L.drawdown);
+  }
+  if (L.boost > 0 && now - L.lastStall > 60000 && now - L.lastDecrease > 15000) {
+    L.boost = XPCore.relaxBoost(L.boost);
+    L.lastDecrease = now;
+  }
+  L.target = Math.min(8, Math.max(p.floor, L.measured > 0 ? L.measured : L.saved, L.boost));
+  // il canale successivo parte dall'obiettivo misurato su questo provider
+  if (L.measured > 0 && now - L.lastSave > 30000) { L.lastSave = now; latSave(); }
 }
 function latSave() { lsSet('xp.latTarget.' + L.mode, Math.round(L.target * 100) / 100); }
 function bufferAhead() {
@@ -204,7 +257,7 @@ function bufferAhead() {
 function latStart() {
   latStop();
   latLoad();
-  L.lastStall = L.lastDecrease = performance.now();
+  L.lastStall = L.lastDecrease = L.lastSave = performance.now();
   L.stalls = 0;
   L.timer = setInterval(latTick, 250);
 }
@@ -214,12 +267,32 @@ function latStop() {
   if (video.playbackRate !== 1) video.playbackRate = 1;
   updateLatencyUi(true);
 }
+// intervalli del buffer come [[inizio, fine], ...]
+function bufferedRanges() {
+  const b = video.buffered, out = [];
+  for (let i = 0; i < b.length; i++) out.push([b.start(i), b.end(i)]);
+  return out;
+}
+// salta un buco nella timeline davanti alla posizione attuale; true se ha saltato
+function jumpGap() {
+  const to = XPCore.gapJump(bufferedRanges(), video.currentTime);
+  if (to < 0) return false;
+  L.lastJump = performance.now();
+  video.currentTime = to;
+  return true;
+}
 function latTick() {
+  // la misura dell'arrivo dei dati continua anche da fermi (pausa, attesa del buffer)
+  const tickNow = performance.now();
+  latSample(tickNow);
+  latRetarget(tickNow);
+  if (!video.paused && video.readyState < 3 && jumpGap()) { updateLatencyUi(); return; }
   if (video.paused || video.readyState < 3) { updateLatencyUi(); return; }
   const ahead = bufferAhead();
   L.ahead = ahead;
   const t = L.target, b = video.buffered;
-  if (XPCore.latencyStep(ahead, t).jump && b.length) {
+  const step = XPCore.latencyStep(ahead, t, latChase());
+  if (step.jump && b.length) {
     // troppo indietro (es. dopo una pausa): salto al bordo live mantenendo il margine
     L.lastJump = performance.now();
     video.currentTime = b.end(b.length - 1) - t;
@@ -228,22 +301,46 @@ function latTick() {
     return;
   }
   // recupero morbido con la velocità (pitch preservato), niente salti udibili
-  const rate = XPCore.latencyStep(ahead, t).rate;
+  const rate = step.rate;
   if (Math.abs(video.playbackRate - rate) > 0.004) video.playbackRate = rate;
-  const now = performance.now(), p = latPreset();
-  if (t > p.floor && now - L.lastStall > 45000 && now - L.lastDecrease > 30000) {
-    L.target = XPCore.relaxTarget(t, p.floor);
-    L.lastDecrease = now;
-    latSave();
-  }
   updateLatencyUi();
 }
 function latOnStall() {
   if (performance.now() - L.lastJump < 1500) return;
   L.stalls += 1;
-  L.target = XPCore.stallTarget(L.target);
+  // la misura non aveva previsto questo scatto: margine in più, che si riduce di 0,25 s ogni
+  // 15 s dopo un minuto senza altri scatti
+  L.boost = XPCore.stallTarget(L.target);
+  L.target = Math.max(L.target, L.boost);
   L.lastStall = performance.now();
   latSave();
+  rebufferGate();
+}
+
+// Dopo uno scatto il video resta fermo finché non torna un margine di buffer (o un buco da
+// saltare): il browser ripartirebbe appena arriva un fotogramma, con una serie di micro-scatti.
+function rebufferGate() {
+  if (P.rebufTimer || !P.mpegts || video.paused || video.seeking) return;
+  const player = P.mpegts, t0 = performance.now();
+  P.rebuffering = true;
+  video.pause();
+  setSpinner(true);
+  P.rebufTimer = setInterval(() => {
+    if (P.mpegts !== player || !P.rebuffering) { stopRebuffer(); return; }
+    jumpGap();
+    if (bufferAhead() >= XPCore.rebufferNeed(L.target)) {
+      stopRebuffer();
+      video.play().catch(() => {});
+      return;
+    }
+    // nessun dato per 15 s nonostante le riconnessioni del proxy: si riavvia il canale
+    if (performance.now() - t0 > 15000) { stopRebuffer(); onLiveError('nessun dato dal provider da 15 secondi'); }
+  }, 100);
+}
+function stopRebuffer() {
+  clearInterval(P.rebufTimer);
+  P.rebufTimer = null;
+  P.rebuffering = false;
 }
 let latUiLast = 0;
 function updateLatencyUi(force) {
@@ -252,8 +349,10 @@ function updateLatencyUi(force) {
   latUiLast = now;
   const el = $('info-latency');
   if (!S.current || S.currentMode !== 'live' || !L.timer) { el.textContent = ''; return; }
-  el.textContent = `Buffer ${L.ahead.toFixed(1)} s · obiettivo ${L.target.toFixed(1)} s · velocità ${video.playbackRate.toFixed(2)}×` +
-    (L.stalls ? ` · ${L.stalls} scatt${L.stalls === 1 ? 'o' : 'i'}: buffer aumentato` : '');
+  // con "Minimo" e "Medio" si mostra anche la misura: pausa peggiore del provider nell'ultimo minuto
+  const measure = !latChase() ? '' : L.measured > 0 ? ` (pause del provider fino a ${L.drawdown.toFixed(1)} s)` : ' (misura in corso)';
+  el.textContent = `Buffer ${L.ahead.toFixed(1)} s · obiettivo ${L.target.toFixed(1)} s${measure} · velocità ${video.playbackRate.toFixed(2)}×` +
+    (L.stalls ? ` · ${L.stalls} scatt${L.stalls === 1 ? 'o' : 'i'}` : '');
 }
 
 function destroyPlayer() {
@@ -262,6 +361,7 @@ function destroyPlayer() {
   clearTimeout(P.healthTimer); P.healthTimer = null;
   clearInterval(P.startTimer); P.startTimer = null;
   clearInterval(P.tracksTimer); P.tracksTimer = null;
+  stopRebuffer();
   P.sid = ''; P.sessionSubs = [];
   clearSubtitleElements();
   // un film convertito sospeso da mpegts.js tiene la connessione al provider: si chiude
@@ -475,13 +575,18 @@ function startLive(item, fmt, forcedRoute) {
   // il proxy legge la PMT del flusso e registra le tracce con questo identificativo
   const sid = newSid();
   P.sid = sid;
+  // "Stabile": tutta la raffica iniziale del server, si parte subito. Altrimenti il proxy ne
+  // tiene il buffer obiettivo più un margine; convertendo il video la raffica va codificata
+  // prima di uscire, quindi se ne tiene il minimo
+  latLoad();
+  const keep = latChase() ? XPCore.burstKeep(L.target) : 'all';
   if (route) {
     P.route = route;
     setStatus(`Conversione in tempo reale: ${describeRoute(route)}`);
-    startMpegts(transcodeUrl(tsUrl, route, { live: true, sid }), true, item, 'live');
+    startMpegts(transcodeUrl(tsUrl, route, { live: true, sid, keep: route.v === 'h264' && keep !== 'all' ? 0 : keep }), true, item, 'live');
   } else {
     setStatus('Connessione allo stream…');
-    startMpegts(proxied(tsUrl, { live: true, sid }), true, item, 'live');
+    startMpegts(proxied(tsUrl, { live: true, sid, keep }), true, item, 'live');
   }
   watchLiveTracks(item, sid);
   updateTech();
@@ -521,6 +626,15 @@ function startMpegts(src, isLive, item, mode) {
     if (P.mpegts !== player) return;
     onMediaInfo(item, mode, mi);
   });
+  // live: il proxy chiude il flusso solo se il provider non è più recuperabile (riconnessioni
+  // fallite, ripresa impossibile). Si riavvia subito il canale invece di consumare il buffer e
+  // restare fermi in attesa di dati che non arriveranno più
+  if (isLive) {
+    player.on(mpegts.Events.LOADING_COMPLETE, () => {
+      if (P.mpegts !== player || S.current !== item) return;
+      onLiveError('il provider ha chiuso il flusso');
+    });
+  }
   player.attachMediaElement(video);
   player.load();
   if (isLive) {
@@ -537,6 +651,20 @@ function startMpegts(src, isLive, item, mode) {
 // si salta al bordo live da fermi e si parte con il buffer obiettivo: niente ritardo e
 // nessun salto visibile dopo l'avvio.
 function gatedStart(player) {
+  // "Stabile": la raffica arriva intera e resta come buffer, si parte appena c'è mezzo secondo
+  if (!latChase()) {
+    const t0 = performance.now();
+    clearInterval(P.startTimer);
+    P.startTimer = setInterval(() => {
+      if (P.mpegts !== player) { clearInterval(P.startTimer); P.startTimer = null; return; }
+      const ahead = bufferAhead();
+      if (ahead < 0.5 && !(ahead > 0 && performance.now() - t0 > 3000)) return;
+      clearInterval(P.startTimer); P.startTimer = null;
+      const pr = player.play();
+      if (pr && pr.catch) pr.catch(() => { /* autoplay bloccato: l'utente può premere play */ });
+    }, 40);
+    return;
+  }
   const need = Math.min(1.0, Math.max(0.3, L.target * 0.6));
   const t0 = performance.now();
   const hist = [];
@@ -619,12 +747,13 @@ function healthCheck(item, mode) {
 }
 
 function startHls(url, isLive) {
-  const stable = L.mode === 'stable';
+  // segmenti di distanza dalla diretta secondo il preset del buffer (Minimo / Medio / Stabile)
+  const sync = { min: 2, bal: 3, stable: 4 }[L.mode] || 3;
   const hls = new Hls({
     enableWorker: true,
     lowLatencyMode: true,
-    liveSyncDurationCount: stable ? 3 : 2,
-    liveMaxLatencyDurationCount: stable ? 6 : 4,
+    liveSyncDurationCount: sync,
+    liveMaxLatencyDurationCount: sync * 2,
     maxLiveSyncPlaybackRate: 1.1,
     maxBufferLength: isLive ? 10 : 60,
     backBufferLength: isLive ? 10 : 30,
@@ -820,7 +949,7 @@ video.addEventListener('waiting', () => {
   setSpinner(true);
   if (P.hadPlaying && S.currentMode === 'live' && L.timer) latOnStall();
 });
-video.addEventListener('pause', () => { updatePlayButton(); if (S.current && video.readyState >= 2) setStatus('In pausa'); });
+video.addEventListener('pause', () => { updatePlayButton(); if (S.current && !P.rebuffering && video.readyState >= 2) setStatus('In pausa'); });
 video.addEventListener('play', () => updatePlayButton());
 video.addEventListener('loadedmetadata', updateTech);
 video.addEventListener('volumechange', () => updateVolumeUi());
