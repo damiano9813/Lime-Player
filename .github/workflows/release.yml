@@ -46,6 +46,7 @@ jobs:
 
       # beforeBuildCommand scarica ffmpeg (già presente dal passo precedente) e compila la UI
       - uses: tauri-apps/tauri-action@v1
+        id: tauri
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -59,3 +60,17 @@ jobs:
           prerelease: false
           uploadUpdaterJson: true
           updaterJsonPreferNsis: true
+
+      # latest.json di tauri-action punta all'API di GitHub (releases/assets/<id>), che senza token
+      # risponde 403 oltre le 60 richieste l'ora per IP: si passa ai link di download diretti
+      - name: Link diretti in latest.json
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: v${{ steps.tauri.outputs.appVersion }}
+        run: |
+          mkdir -p updater
+          gh release download "$TAG" --pattern latest.json --dir updater --clobber
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq .assets > updater/assets.json
+          node scripts/fix-updater-json.mjs updater/latest.json updater/assets.json
+          gh release upload "$TAG" updater/latest.json --clobber

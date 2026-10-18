@@ -8,6 +8,7 @@ Player IPTV desktop per Windows compatibile con le API Xtream Codes.
 Lime-Player/
 ├─ package.json                  script `npm test`, `npm run fetch:ffmpeg`
 ├─ scripts/fetch-ffmpeg.mjs      scarica ffmpeg/ffprobe LGPL (versione fissata, SHA-256)
+├─ scripts/fix-updater-json.mjs  link di download diretti in latest.json (workflow di release)
 ├─ tests/core.test.js            test della logica pura del frontend (node --test)
 ├─ ui/
 │  ├─ index.html                 markup e stili
@@ -155,7 +156,10 @@ aggiornata. Nelle Impostazioni, "Cerca aggiornamenti" ripete il controllo.
   `Cargo.toml`, poi `git tag v1.2.3` e `git push --tags`: il workflow
   `.github/workflows/release.yml` (`tauri-apps/tauri-action`) esegue i test, compila, firma e
   pubblica subito la release con installer, `.sig` e `latest.json`: le app installate la vedono al
-  prossimo avvio. Segreto del repository: `TAURI_SIGNING_PRIVATE_KEY` (contenuto del file `.key`);
+  prossimo avvio. tauri-action mette in `latest.json` gli indirizzi dell'API di GitHub
+  (`api.github.com/.../releases/assets/<id>`), che senza token rispondono 403 oltre le 60
+  richieste l'ora per IP: il passo successivo (`scripts/fix-updater-json.mjs`) li sostituisce con i
+  link `releases/download/` e ricarica il file. Segreto del repository: `TAURI_SIGNING_PRIVATE_KEY` (contenuto del file `.key`);
   `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` solo se la chiave ha una password.
 - **A mano**: dopo `cargo tauri build` crea su GitHub la release `v1.2.3` e carica l'installer e un
   `latest.json` come questo (`signature` = testo del file `.sig`; nell'URL GitHub sostituisce gli
