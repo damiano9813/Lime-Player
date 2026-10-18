@@ -16,7 +16,7 @@ Lime-Player/
 │     ├─ core.js                 logica pura testabile: codec, percorsi, URL, buffer adattivo, griglia guida
 │     ├─ 01-base.js              utilità, toast, modale, scorciatoie, icone
 │     ├─ 02-state.js             costanti e stato condiviso
-│     ├─ 03-login.js             login, logout, account
+│     ├─ 03-login.js             playlist salvate, accesso, cambio di playlist, account
 │     ├─ 04-library.js           Live/Film, categorie, liste, ricerca, preferiti, recenti
 │     ├─ 05-list.js              lista virtualizzata
 │     ├─ 06-player.js            player, conversione ffmpeg, buffer adattivo
@@ -194,12 +194,19 @@ PATH.
 - **Codec**: l'app riconosce i codec non supportati (dai metadati dello stream e controllando che audio e video vengano davvero decodificati) e passa da sola alla conversione ffmpeg. La scelta viene ricordata per ogni canale, così lo zapping successivo è immediato. Film ed episodi vengono analizzati con ffprobe prima della riproduzione; il seek riavvia ffmpeg dal punto scelto.
 - **Buffer misurato (live)**: con "Minimo" e "Medio" il player guarda come arrivano i dati: se il provider li mandasse in tempo reale la fine del buffer avanzerebbe di 1 s al secondo, quindi il calo massimo di (fine del buffer - tempo reale) nell'ultimo minuto è il buffer che la pausa peggiore del provider ha consumato (`XPCore.arrivalDrawdown`). Dopo 15 s di osservazione l'obiettivo diventa quella pausa più un quarto, più 0,4 s (`measuredTarget`, al massimo 8 s), mai sotto il minimo del preset (0,6 s / 1,5 s); prima si usa l'obiettivo salvato dal canale precedente. Uno scatto aggiunge comunque un margine (+50%) che scende di 0,25 s ogni 15 s dopo un minuto senza altri scatti. Il player recupera il ritardo accelerando leggermente (fino a 1,15×, con tono preservato). La riga sotto le informazioni del canale mostra buffer, obiettivo e pausa peggiore misurata. Con "Stabile" (predefinito) parte dalla raffica iniziale e non insegue la diretta: rallenta solo se il buffer scende sotto metà dell'obiettivo (6 s) e salta in avanti solo oltre 90 s di ritardo. Con HLS il preset decide quanti segmenti tenere dalla diretta (2 / 3 / 4).
 - Prima di aprire il player esterno lo stream interno viene chiuso, per non superare il limite di connessioni dell'account.
-- **Credenziali**: la password sta in Gestione credenziali di Windows (Credenziali generiche,
-  voce `Xtream Player/<utente>@<server>`, crate `keyring`); `%APPDATA%\com.xtreamplayer.desktop\credentials.json`
-  e `localStorage` (`xp.credentials`) contengono solo server e utente. L'accesso automatico legge
-  la password da Rust (`load_credentials`). Un vecchio file o un `localStorage` con la password in
-  chiaro vengono migrati al primo avvio. "Esci e dimentica credenziali" cancella file, voce del
-  vault e `localStorage`.
+- **Più playlist**: si possono salvare più account Xtream, ciascuno con un nome facoltativo. La
+  schermata iniziale elenca le playlist salvate (clic per aprirla, cestino per rimuoverla) e
+  "Aggiungi playlist" apre il form. Nella barra laterale un selettore passa da una playlist
+  all'altra e "Gestisci playlist" torna all'elenco; all'avvio si riapre l'ultima usata, a meno che
+  si sia tornati all'elenco prima di chiudere l'app.
+- **Credenziali**: le password stanno in Gestione credenziali di Windows (Credenziali generiche,
+  una voce `Xtream Player/<utente>@<server>` per playlist, crate `keyring`);
+  `%APPDATA%\com.xtreamplayer.desktop\credentials.json` contiene solo l'elenco
+  (`accounts`: server, utente, nome) e l'ultima playlist usata (`last`). L'accesso automatico legge
+  la password da Rust (`load_credentials`, `load_account`). Il vecchio file a un solo account,
+  quello con la password in chiaro e il vecchio `localStorage` (`xp.credentials`) vengono migrati
+  al primo avvio. Rimuovere una playlist cancella la sua voce del vault, le sue liste salvate e
+  la sua guida TV.
 - I certificati HTTPS non validi vengono accettati, perché molti provider IPTV usano certificati self-signed.
 - Librerie e CSS sono locali (`ui/vendor/`, versioni fissate in `package.json`): niente CDN.
 - **CSP** (`app.security.csp` in `tauri.conf.json`): script solo dall'app; immagini (loghi e
@@ -221,7 +228,7 @@ PATH.
 - **Cache delle liste**: categorie e liste vengono salvate in `%LOCALAPPDATA%\com.xtreamplayer.desktop\lists\`.
   All'avvio si mostrano subito quelle salvate (se hanno meno di 24 ore) e si aggiornano in
   background se hanno più di 10 minuti; senza rete si usa comunque l'ultima lista. Il pulsante
-  di aggiornamento scarica sempre dal server; "Esci" cancella anche la cache.
+  di aggiornamento scarica sempre dal server; rimuovere la playlist cancella anche la sua cache.
 - **Raffica iniziale**: alla connessione molti server inviano in pochi secondi 10-30 s di video
   già trasmesso, poi proseguono in tempo reale. Con il preset "Stabile" (predefinito, `keep=all`)
   il proxy la passa subito tutta: il video parte in meno di un secondo con decine di secondi di
@@ -271,7 +278,7 @@ PATH.
     con i programmi da 8 giorni fa a 8 avanti e le descrizioni accorciate: una guida di prova da
     130 MB e 394.000 programmi si legge in meno di un secondo in release. La copia compatta in
     JSON (`lists\<account>\xmltv.json`) si usa subito ai riavvii e si riscarica in background
-    dopo 6 ore (evento `guide-updated`); "Svuota cache" ed "Esci" la cancellano.
+    dopo 6 ore (evento `guide-updated`); "Svuota cache" e la rimozione della playlist la cancellano.
   - **Riserva per canale**: i canali senza `epg_channel_id`, assenti da `xmltv.php` o senza
     programmi in quel giorno (per esempio giorni di archivio che la guida completa non copre), e
     tutti i canali se il server non offre `xmltv.php`, usano `get_epg_day`

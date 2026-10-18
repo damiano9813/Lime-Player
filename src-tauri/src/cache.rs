@@ -101,6 +101,9 @@ pub struct Listing<T> {
 /// Evento inviato alla UI quando l'aggiornamento in background è pronto.
 #[derive(Debug, Clone, Serialize)]
 struct ListUpdated<T> {
+    // account della lista: la UI ignora gli aggiornamenti arrivati dopo un cambio di playlist
+    server: String,
+    username: String,
     action: String,
     category_id: String,
     items: Vec<T>,
@@ -198,6 +201,8 @@ where
                         let _ = app.emit(
                             "list-updated",
                             ListUpdated {
+                                server: key.server.clone(),
+                                username: key.username.clone(),
                                 action: key.action.clone(),
                                 category_id: key.category.clone(),
                                 items: fresh,
@@ -240,11 +245,22 @@ where
     })
 }
 
-/// Cancella tutte le liste salvate, guida TV compresa (logout / svuota cache).
+/// Cancella tutte le liste salvate, guida TV compresa ("Svuota cache").
 #[tauri::command]
 pub fn clear_list_cache(app: AppHandle) -> Result<(), String> {
     crate::guide::forget();
     match lists_dir(&app) {
+        Some(dir) if dir.exists() => std::fs::remove_dir_all(&dir)
+            .map_err(|e| format!("Impossibile svuotare la cache: {}", e)),
+        _ => Ok(()),
+    }
+}
+
+/// Cancella le liste salvate e la guida TV di una sola playlist (playlist rimossa).
+#[tauri::command]
+pub fn clear_account_cache(app: AppHandle, server: String, username: String) -> Result<(), String> {
+    crate::guide::forget();
+    match account_dir(&app, &server, &username) {
         Some(dir) if dir.exists() => std::fs::remove_dir_all(&dir)
             .map_err(|e| format!("Impossibile svuotare la cache: {}", e)),
         _ => Ok(()),

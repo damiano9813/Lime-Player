@@ -86,7 +86,7 @@ fn load_lock() -> &'static tokio::sync::Mutex<()> {
     LOAD_LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
 }
 
-/// Dimentica la guida in memoria (logout, "Svuota cache").
+/// Dimentica la guida in memoria ("Svuota cache", playlist rimossa).
 pub fn forget() {
     if let Ok(mut g) = GUIDE.lock() {
         *g = None;

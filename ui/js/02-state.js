@@ -14,6 +14,8 @@ const MODES = Object.keys(MODE_API);
 const perMode = (fn) => Object.fromEntries(MODES.map((m) => [m, fn(m)]));
 const S = {
   creds: null,
+  // nome scelto per la playlist aperta (vuoto: si mostra l'username)
+  acctName: '',
   account: null,
   proxy: null,
   mode: MODES.includes(lsGet('xp.mode', 'live')) ? lsGet('xp.mode', 'live') : 'live',

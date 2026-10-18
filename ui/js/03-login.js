@@ -1,18 +1,73 @@
-// Login, logout, account e stato di ffmpeg.
+// Playlist salvate, accesso, cambio di playlist, account e stato di ffmpeg.
 'use strict';
 
 // ------------------------------------------------------------------ login
-// solo server e utente (precompilano il form); la password la custodisce Rust nel vault
+// versioni precedenti: server e utente (e prima ancora la password) in localStorage, letti solo per la migrazione
 const CREDS_KEY = 'xp.credentials';
 
 let loginSeq = 0;
+// playlist salvate { server, username, name, last }: le password le custodisce Rust nel vault
+let accounts = [];
+// form della nuova playlist aperto sopra l'elenco
+let formOpen = false;
+
+const accountLabel = (a) => (a && (a.name || a.username)) || '';
+const sameAccount = (a, b) => !!a && !!b && a.server === b.server && a.username === b.username;
+const TRASH = '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg>';
+
+async function refreshAccounts() {
+  try { accounts = await invoke('list_accounts'); } catch { accounts = []; }
+  renderAccountPicker();
+  renderAccountSwitch();
+}
+
+function setFormOpen(open) {
+  formOpen = open;
+  const list = accounts.length > 0;
+  $('login-form').classList.toggle('hidden', list && !open);
+  $('login-form-head').classList.toggle('hidden', !list);
+  $('acct-add').classList.toggle('hidden', !list || open);
+}
+
+function renderAccountPicker() {
+  $('acct-picker').classList.toggle('hidden', !accounts.length);
+  $('acct-list').innerHTML = accounts.map((a, i) => `
+    <div class="flex items-center gap-1 rounded-lg border border-line bg-s1 hover:bg-s3 transition">
+      <button type="button" data-open="${i}" class="flex-1 min-w-0 text-left px-3 py-2 disabled:cursor-wait">
+        <div class="text-sm font-bold text-ink truncate">${escapeHtml(accountLabel(a))}</div>
+        <div class="text-[11px] text-ink-subtle truncate" title="${escapeHtml(a.server)}">${escapeHtml(a.name ? `${a.username} · ${a.server}` : a.server)}</div>
+      </button>
+      <button type="button" data-remove="${i}" class="icon-btn mr-1 shrink-0" title="Rimuovi playlist" aria-label="Rimuovi ${escapeHtml(accountLabel(a))}">${TRASH}</button>
+    </div>`).join('');
+  setFormOpen(formOpen);
+}
+
+// selettore nella barra laterale: le playlist salvate più quella aperta, se non è salvata
+function renderAccountSwitch() {
+  const sel = $('acct-switch');
+  const list = S.creds && !accounts.some((a) => sameAccount(a, S.creds))
+    ? [{ ...S.creds, name: S.acctName }, ...accounts] : accounts;
+  sel.classList.toggle('hidden', !S.creds || list.length < 2);
+  sel.innerHTML = list.map((a, i) =>
+    `<option value="${i}" ${sameAccount(a, S.creds) ? 'selected' : ''}>${escapeHtml(accountLabel(a))}</option>`).join('');
+  sel.onchange = () => {
+    const a = list[+sel.value];
+    if (a && !sameAccount(a, S.creds)) switchAccount(a);
+  };
+}
 
 function setLoginBusy(busy, text) {
   $('login-btn').disabled = busy;
   $('login-spin').classList.toggle('hidden', !busy);
   $('login-btn-text').textContent = busy ? (text || 'Connessione…') : 'Accedi';
   $('login-cancel').classList.toggle('hidden', !busy);
-  ['f-server', 'f-user', 'f-pass'].forEach((id) => { $(id).disabled = busy; });
+  ['f-name', 'f-server', 'f-user', 'f-pass'].forEach((id) => { $(id).disabled = busy; });
+  $('acct-list').querySelectorAll('button').forEach((b) => { b.disabled = busy; });
+  $('acct-add').disabled = busy;
+  // con il form chiuso l'avanzamento si vede sotto l'elenco
+  const inList = busy && $('login-form').classList.contains('hidden');
+  $('acct-busy').classList.toggle('hidden', !inList);
+  $('acct-busy-text').textContent = inList ? (text || 'Connessione…') : '';
 }
 function showLoginError(msg) {
   const el = $('login-error');
@@ -21,45 +76,104 @@ function showLoginError(msg) {
 }
 function fillLoginForm(c) {
   if (!c) return;
+  $('f-name').value = c.name || '';
   $('f-server').value = c.server || '';
   $('f-user').value = c.username || '';
   $('f-pass').value = c.password || '';
+}
+function clearLoginForm() {
+  fillLoginForm({});
+  $('f-remember').checked = true;
 }
 
 async function doLogin(creds, remember, auto) {
   const seq = ++loginSeq;
   showLoginError('');
-  setLoginBusy(true, auto ? `Accesso automatico come ${creds.username}…` : 'Connessione al server…');
+  const label = accountLabel(creds);
+  setLoginBusy(true, auto ? `Accesso automatico a ${label}…` : `Connessione a ${label}…`);
   try {
     const account = await invoke('xtream_login', { server: creds.server, username: creds.username, password: creds.password });
     if (seq !== loginSeq) return;
     const normalized = { server: account.normalized_server, username: creds.username.trim(), password: creds.password };
+    const name = (creds.name || '').trim();
+    const saved = accounts.find((a) => sameAccount(a, normalized));
     S.creds = normalized;
+    S.acctName = name || (saved && saved.name) || '';
     S.account = account;
     if (remember) {
-      lsSet(CREDS_KEY, XPCore.publicCreds(normalized));
-      invoke('save_credentials', normalized).catch((e) => toast('Credenziali non salvate: ' + errText(e), 'error'));
+      invoke('save_credentials', { ...normalized, name })
+        .catch((e) => toast('Playlist non salvata: ' + errText(e), 'error'))
+        .finally(refreshAccounts);
     }
+    setFormOpen(false);
+    clearLoginForm();
     enterApp();
   } catch (e) {
     if (seq !== loginSeq) return;
-    showLoginError(errText(e));
     fillLoginForm(creds);
+    setFormOpen(true);
+    showLoginError(errText(e));
   } finally {
     if (seq === loginSeq) setLoginBusy(false);
   }
 }
 
+// accesso con una playlist salvata: la password arriva dal vault
+async function openSavedAccount(a) {
+  let c = null;
+  try { c = await invoke('load_account', { server: a.server, username: a.username }); } catch (e) { toast(errText(e), 'error'); }
+  if (!c) {
+    fillLoginForm({ ...a, password: '' });
+    setFormOpen(true);
+    showLoginError('Password non trovata su questo PC: inseriscila di nuovo.');
+    $('f-pass').focus();
+    return;
+  }
+  await doLogin(c, true, false);
+}
+
+async function removeSavedAccount(a) {
+  const ok = await openModal(`Rimuovere ${accountLabel(a)}?`,
+    '<p>La password salvata su questo PC e le liste scaricate di questa playlist verranno cancellate. Preferiti e cronologia tornano se la aggiungi di nuovo.</p>',
+    [{ label: 'Annulla', value: false }, { label: 'Rimuovi', value: true, danger: true }]);
+  if (!ok) return;
+  try {
+    await invoke('remove_account', { server: a.server, username: a.username });
+    await invoke('clear_account_cache', { server: a.server, username: a.username }).catch(() => {});
+    toast(`Playlist ${accountLabel(a)} rimossa`, 'ok');
+  } catch (e) { toast(errText(e), 'error'); }
+  await refreshAccounts();
+  if (!accounts.length) $('f-server').focus();
+}
+
+$('acct-list').addEventListener('click', (ev) => {
+  const b = ev.target.closest('button');
+  if (!b || b.disabled) return;
+  if (b.dataset.open != null) openSavedAccount(accounts[+b.dataset.open]);
+  else if (b.dataset.remove != null) removeSavedAccount(accounts[+b.dataset.remove]);
+});
+$('acct-add').addEventListener('click', () => {
+  clearLoginForm();
+  showLoginError('');
+  setFormOpen(true);
+  $('f-name').focus();
+});
+$('login-form-close').addEventListener('click', () => {
+  showLoginError('');
+  setFormOpen(false);
+});
 // la richiesta in corso non si può interrompere: se ne ignora il risultato
-$('login-cancel').addEventListener('click', () => {
+function cancelLogin() {
   loginSeq += 1;
   setLoginBusy(false);
-  $('f-server').focus();
-});
+  if (!$('login-form').classList.contains('hidden')) $('f-server').focus();
+}
+$('login-cancel').addEventListener('click', cancelLogin);
+$('acct-cancel').addEventListener('click', cancelLogin);
 
 $('login-form').addEventListener('submit', (ev) => {
   ev.preventDefault();
-  const creds = { server: $('f-server').value.trim(), username: $('f-user').value.trim(), password: $('f-pass').value };
+  const creds = { name: $('f-name').value.trim(), server: $('f-server').value.trim(), username: $('f-user').value.trim(), password: $('f-pass').value };
   if (!creds.server || !creds.username || !creds.password) { showLoginError('Compila URL server, username e password.'); return; }
   doLogin(creds, $('f-remember').checked);
 });
@@ -77,17 +191,19 @@ $('toggle-pass').addEventListener('click', () => {
   updatePassToggle();
 });
 
-async function logout() {
+// chiude la playlist aperta e torna all'elenco; preferiti, recenti e posizioni restano salvati
+// sotto l'account e tornano al prossimo accesso
+function leaveAccount() {
+  loginSeq += 1;
   destroyPlayer();
   resetPlayerUi();
-  lsDel(CREDS_KEY);
-  await invoke('clear_credentials').catch(() => {});
-  // le liste salvate appartengono all'account: si cancellano con le credenziali
-  await invoke('clear_list_cache').catch(() => {});
+  S.loadSeq += 1;
   S.listAge.clear();
   S.previous = null;
-  S.creds = null; S.account = null; S.cache.clear();
-  // preferiti, recenti e posizioni restano salvati sotto l'account e tornano al prossimo accesso
+  S.creds = null; S.account = null; S.acctName = ''; S.cache.clear();
+  // gli id di canali e film valgono solo per il loro provider
+  EPG.cache.clear(); EPG.inflight.clear(); EPG.queue = [];
+  VODINFO.clear();
   unloadAccountData();
   S.categories = perMode(() => null);
   S.catNames = perMode(() => new Map());
@@ -95,15 +211,26 @@ async function logout() {
   closeGuide();
   resetGuide();
   S.list = []; S.filtered = [];
-  $('f-pass').value = '';
+  $('acct-switch').classList.add('hidden');
   $('app-view').classList.add('hidden');
   $('login-view').classList.remove('hidden');
 }
+
+function switchAccount(a) {
+  leaveAccount();
+  showLoginError('');
+  setFormOpen(false);
+  openSavedAccount(a);
+}
+
 $('logout-btn').addEventListener('click', async () => {
-  const ok = await openModal('Uscire dall\'account?',
-    '<p>Lo stream in corso verrà fermato e le credenziali salvate su questo PC verranno cancellate. Preferiti e cronologia restano disponibili.</p>',
-    [{ label: 'Annulla', value: false }, { label: 'Esci', value: true, danger: true }]);
-  if (ok) logout();
+  leaveAccount();
+  // al prossimo avvio si sceglie dall'elenco
+  await invoke('clear_last_account').catch(() => {});
+  await refreshAccounts();
+  showLoginError('');
+  setFormOpen(!accounts.length);
+  if (!accounts.length) $('f-server').focus();
 });
 
 function enterApp() {
@@ -111,6 +238,7 @@ function enterApp() {
   $('login-view').classList.add('hidden');
   $('app-view').classList.remove('hidden');
   renderAccount();
+  renderAccountSwitch();
   renderCaps();
   setTheater(lsGet('xp.theater', false));
   switchMode(S.mode, true);
@@ -130,7 +258,7 @@ function renderAccount() {
   const status = a.status || 'Sconosciuto';
   const ok = /active/i.test(status);
   $('account-box').innerHTML = `
-    <div class="flex items-center justify-between"><span class="text-ink font-bold truncate">${escapeHtml(a.username)}</span>
+    <div class="flex items-center justify-between gap-2"><span class="text-ink font-bold truncate" title="${escapeHtml(a.username)}">${escapeHtml(S.acctName || a.username)}</span>
       <span class="badge ${ok ? 'bg-success-soft text-success' : 'bg-accent-soft text-accent-ink'}">${escapeHtml(status)}</span></div>
     <div class="flex justify-between"><span>Scadenza</span><span class="${expCls}">${escapeHtml(exp)}</span></div>
     <div class="flex justify-between"><span>Connessioni</span><span class="text-ink tabular-nums">${escapeHtml(a.active_cons || '0')} / ${escapeHtml(a.max_connections || '?')}</span></div>

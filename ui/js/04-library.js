@@ -35,14 +35,18 @@ async function loadCategories(forceReload) {
   const mode = S.mode;
   if (S.categories[mode] && !forceReload) { renderCategories(); return; }
   $('cat-list').innerHTML = '<div class="flex items-center gap-2 text-sm text-ink-subtle p-3"><svg class="w-4 h-4 spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M12 3a9 9 0 1 0 9 9" stroke-linecap="round"/></svg>Caricamento categorie…</div>';
+  // la risposta di una playlist chiusa nel frattempo non si usa
+  const acct = S.acct;
   try {
     const res = await invoke('get_categories', { ...S.creds, mode: MODE_API[mode].cats, cache: forceReload ? 'refresh' : 'prefer' });
+    if (S.acct !== acct) return;
     const cats = res.items;
     S.categories[mode] = cats;
     const map = new Map();
     cats.forEach((c) => map.set(c.category_id, c.category_name));
     S.catNames[mode] = map;
   } catch (e) {
+    if (S.acct !== acct) return;
     S.categories[mode] = [];
     toast('Errore categorie: ' + errText(e), 'error');
   }
@@ -110,6 +114,7 @@ function prepareItems(items) {
 
 async function loadStreams(mode, catId, forceReload) {
   const seq = ++S.loadSeq;
+  const acct = S.acct;
   let items;
   if (catId === FAV || catId === RECENT) {
     items = prepareItems((catId === FAV ? S.favorites : S.recent)[mode].slice());
@@ -131,6 +136,7 @@ async function loadStreams(mode, catId, forceReload) {
         const res = mode === 'series'
           ? await invoke('get_series_list', args)
           : await invoke('get_streams', { ...args, mode: MODE_API[mode].streams });
+        if (S.acct !== acct) return;
         items = prepareItems(res.items);
         S.cache.set(key, items);
         S.listAge.set(key, res.fetched_at);
@@ -156,6 +162,8 @@ function setListAge(fetchedAt) {
 // si sostituisce senza perdere scroll, ricerca e contenuto in riproduzione.
 function onListUpdated(p) {
   if (!S.creds || !p) return;
+  // aggiornamento partito prima di un cambio di playlist
+  if (p.server !== S.creds.server || p.username !== S.creds.username) return;
   const mode = Object.keys(MODE_API).find((m) => MODE_API[m].streams === p.action || MODE_API[m].cats === p.action);
   if (!mode) return;
   if (MODE_API[mode].cats === p.action) {

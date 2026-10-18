@@ -165,17 +165,18 @@ async function init() {
   const local = lsGet(CREDS_KEY, null);
   let saved = null;
   try { saved = await invoke('load_credentials'); } catch { saved = null; }
-  if (local && local.password) {
-    if (!saved) {
-      saved = local;
-      await invoke('save_credentials', { server: local.server, username: local.username, password: local.password }).catch(() => {});
-    }
-    lsSet(CREDS_KEY, XPCore.publicCreds(local));
+  if (local && local.password && !saved) {
+    saved = local;
+    await invoke('save_credentials', { server: local.server, username: local.username, password: local.password }).catch(() => {});
   }
+  lsDel(CREDS_KEY);
+  await refreshAccounts();
+  // accesso automatico all'ultima playlist usata; senza, l'elenco delle playlist (o il form se è vuoto)
   if (saved && saved.server && saved.username && saved.password) {
-    fillLoginForm(saved);
+    setFormOpen(false);
     await doLogin(saved, true, true);
-  } else {
+  } else if (!accounts.length) {
+    setFormOpen(true);
     fillLoginForm(XPCore.publicCreds(local));
     $(local && local.username ? 'f-pass' : 'f-server').focus();
   }
