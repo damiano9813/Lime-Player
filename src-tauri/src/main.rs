@@ -19,6 +19,8 @@ use std::sync::Arc;
 use media::media_tools;
 use proxy::{random_token, run_proxy, ProxyCtx};
 use state::{AppState, ProxyInfo};
+use tauri::Manager;
+use tauri_plugin_window_state::StateFlags;
 use xtream::build_client;
 
 fn main() {
@@ -45,6 +47,20 @@ fn main() {
     });
 
     tauri::Builder::default()
+        // va registrato per primo: la seconda istanza si chiude prima di avviare altro
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.unminimize();
+                let _ = w.show();
+                let _ = w.set_focus();
+            }
+        }))
+        // niente FULLSCREEN: lo schermo intero del video non deve tornare al riavvio
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_state_flags(StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED)
+                .build(),
+        )
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState {
             client,

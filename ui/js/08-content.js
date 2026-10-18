@@ -246,7 +246,7 @@ async function openSeries(it) {
   if (info.meta.plot && !it.plot) $('series-plot').textContent = info.meta.plot;
   if (!info.episodes.length) { $('series-episodes').innerHTML = '<p class="text-sm text-ink-muted p-4">Nessun episodio disponibile.</p>'; return; }
   // si riparte dalla stagione dell'ultimo episodio visto
-  const lastId = lsGet('xp.series.last.' + it.stream_id, null);
+  const lastId = lsGet(ak('series.last.' + it.stream_id), null);
   const last = info.episodes.find((e) => String(e.id) === String(lastId));
   S.seriesView.season = last ? last.season : info.seasons[0].season_number;
   renderSeasons();
@@ -273,7 +273,7 @@ function renderEpisodes(scrollToId) {
   const curId = S.current && S.current._kind === 'episode' ? String(S.current.stream_id) : null;
   $('series-episodes').innerHTML = eps.map((e) => {
     const on = String(e.id) === curId;
-    const resume = lsGet('xp.resume.ep.' + e.id, 0);
+    const resume = getResume(ak('resume.ep.' + e.id));
     const pct = e.duration_secs > 0 && resume > 30 ? Math.min(100, (resume / e.duration_secs) * 100) : 0;
     return `<button data-ep="${escapeHtml(e.id)}" class="relative w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${on ? 'row-active' : 'hover:bg-s2'}">
       <span class="w-14 shrink-0 text-[11px] font-bold tabular-nums ${on ? 'text-accent-ink' : 'text-ink-subtle'}">${XPCore.episodeLabel(e)}</span>
@@ -292,7 +292,7 @@ function renderEpisodes(scrollToId) {
 
 function playEpisode(e, seriesItem, info) {
   const label = XPCore.episodeLabel(e);
-  lsSet('xp.series.last.' + seriesItem.stream_id, e.id);
+  lsSet(ak('series.last.' + seriesItem.stream_id), e.id);
   const item = {
     stream_id: String(e.id),
     name: `${seriesItem.name}  ·  ${label}`,

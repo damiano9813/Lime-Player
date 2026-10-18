@@ -24,7 +24,7 @@ function rowHtml(it, idx, terms) {
   let sub;
   let extra = '';
   if (S.mode === 'vod') {
-    const resume = lsGet(resumeKey(it), 0);
+    const resume = getResume(resumeKey(it));
     sub = [it.container_extension ? it.container_extension.toUpperCase() : '', it.rating > 0 ? '★ ' + Number(it.rating).toFixed(1) : '',
       resume > 30 ? 'riprendi da ' + fmtTime(resume) : ''].filter(Boolean).join(' · ');
   } else if (S.mode === 'series') {

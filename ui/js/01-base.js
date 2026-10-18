@@ -13,6 +13,7 @@ const { escapeHtml, normKey, initials, fmtTime, debounce } = XPCore;
 const lsGet = (k, def) => { try { const v = localStorage.getItem(k); return v == null ? def : JSON.parse(v); } catch { return def; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage pieno o disabilitato */ } };
 const lsDel = (k) => { try { localStorage.removeItem(k); } catch { /* ignorato */ } };
+const lsKeys = () => { try { return Object.keys(localStorage); } catch { return []; } };
 
 let toastTimer = null;
 const TOAST_ICONS = {

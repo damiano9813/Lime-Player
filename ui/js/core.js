@@ -283,8 +283,47 @@
   // in localStorage solo server e utente: la password sta in Gestione credenziali (Rust)
   const publicCreds = (c) => (c && c.server && c.username ? { server: String(c.server), username: String(c.username) } : null);
 
+  // ------------------------------------------------------------------ dati per account
+  // Preferiti, recenti, categoria scelta, posizioni di ripresa e percorsi per canale usano gli id
+  // del provider: stanno sotto "xp.a.<account>." perché su un altro account indicano altri contenuti.
+  // id breve e stabile dell'account: FNV-1a a 32 bit di server normalizzato e utente
+  function accountId(server, username) {
+    const s = String(server || '') + '\n' + String(username || '').trim();
+    let h = 0x811c9dc5;
+    for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+    return h.toString(16).padStart(8, '0');
+  }
+  const accountKey = (acct, key) => `xp.a.${acct}.${key}`;
+  // chiavi delle versioni precedenti, senza account
+  const LEGACY_KEY_RE = /^xp\.((?:fav|recent|cat)\.(?:live|vod|series)|(?:resume|route|series\.last)\..+)$/;
+  // [vecchia chiave, nuova chiave] per spostare i dati senza account sull'account `acct`
+  function legacyKeyMoves(keys, acct) {
+    return (keys || []).map((k) => LEGACY_KEY_RE.exec(k)).filter(Boolean).map((m) => [m[0], accountKey(acct, m[1])]);
+  }
+  // posizione di ripresa: { p: secondi, t: data del salvataggio } (prima solo i secondi)
+  function resumeSeconds(v) {
+    const p = v && typeof v === 'object' ? v.p : v;
+    return typeof p === 'number' && isFinite(p) && p > 0 ? p : 0;
+  }
+  // valore spostato dalla migrazione: le vecchie posizioni non hanno data, prendono quella di oggi
+  function migratedValue(key, value, now) {
+    return /^xp\.resume\./.test(key) && typeof value === 'number' ? { p: value, t: now } : value;
+  }
+  // voci che crescono con ogni film o canale aperto: 'resume' | 'route' | '' (da non potare)
+  function prunableKind(key) {
+    const m = /^xp\.a\.[0-9a-f]{8}\.(resume|route)\./.exec(key);
+    return m ? m[1] : '';
+  }
+  // voci da cancellare: più vecchie di `maxAgeMs` (o senza data) e, oltre `maxCount`, le meno recenti
+  function staleEntries(entries, now, limits) {
+    const fresh = [], stale = [];
+    for (const e of entries || []) (e.t > 0 && now - e.t <= limits.maxAgeMs ? fresh : stale).push(e);
+    fresh.sort((a, b) => b.t - a.t);
+    return stale.concat(fresh.slice(limits.maxCount)).map((e) => e.key);
+  }
+
   return {
-    publicCreds,
+    publicCreds, accountId, accountKey, legacyKeyMoves, resumeSeconds, migratedValue, prunableKind, staleEntries,
     escapeHtml, normKey, initials, fmtTime, debounce, highlight,
     buildStreamUrl, proxyUrl, transcodeUrl, subtitleUrl, timeshiftStart, timeshiftUrl,
     normLang, langName, codecName, channelsLabel, trackLabel, pickTrack, audioCopyOk, audioTrackRoute, PREFERRED_LANGS,

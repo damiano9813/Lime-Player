@@ -87,6 +87,8 @@ async function logout() {
   S.listAge.clear();
   S.previous = null;
   S.creds = null; S.account = null; S.cache.clear();
+  // preferiti, recenti e posizioni restano salvati sotto l'account e tornano al prossimo accesso
+  unloadAccountData();
   S.categories = perMode(() => null);
   S.catNames = perMode(() => new Map());
   closeSeries();
@@ -103,6 +105,7 @@ $('logout-btn').addEventListener('click', async () => {
 });
 
 function enterApp() {
+  loadAccountData();
   $('login-view').classList.add('hidden');
   $('app-view').classList.remove('hidden');
   renderAccount();

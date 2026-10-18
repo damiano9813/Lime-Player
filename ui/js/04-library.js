@@ -91,7 +91,7 @@ async function selectCategory(catId) {
   const mode = S.mode;
   if (!isVirtualCat(catId) && S.categories[mode] && S.categories[mode].length && !S.catNames[mode].has(catId)) catId = ALL;
   S.selectedCat[mode] = catId;
-  lsSet('xp.cat.' + mode, catId);
+  lsSet(ak('cat.' + mode), catId);
   renderCategories();
   revealSelectedCategory();
   $('list-title').textContent = categoryLabel(mode, catId);
@@ -274,7 +274,7 @@ $('refresh-btn').addEventListener('click', async () => {
 $('list-clear-recent').addEventListener('click', () => {
   const mode = S.mode;
   S.recent[mode] = [];
-  lsSet('xp.recent.' + mode, []);
+  lsSet(ak('recent.' + mode), []);
   renderCategories();
   if (S.selectedCat[mode] === RECENT) { S.list = []; applyFilter(true); }
 });
@@ -294,7 +294,7 @@ function toggleFav(mode, item) {
   const added = i === -1;
   if (added) S.favorites[mode].push(slimItem(item));
   else S.favorites[mode].splice(i, 1);
-  lsSet('xp.fav.' + mode, S.favorites[mode]);
+  lsSet(ak('fav.' + mode), S.favorites[mode]);
   if (S.mode === mode) {
     renderCategories();
     if (S.selectedCat[mode] === FAV) { S.list = prepareItems(S.favorites[mode].slice()); applyFilter(false); } else renderList(true);
@@ -308,6 +308,6 @@ function pushRecent(mode, item) {
   const list = S.recent[mode].filter((r) => r.stream_id !== item.stream_id);
   list.unshift(slimItem(item));
   S.recent[mode] = list.slice(0, RECENT_MAX);
-  lsSet('xp.recent.' + mode, S.recent[mode]);
+  lsSet(ak('recent.' + mode), S.recent[mode]);
   if (S.mode === mode) renderCategories();
 }

@@ -21,6 +21,10 @@ base64 = "0.22"
 keyring = { version = "3", features = ["windows-native"] }
 # native-tls come reqwest: niente rustls/aws-lc (cmake/nasm)
 tauri-plugin-updater = { version = "2", default-features = false, features = ["native-tls"] }
+# una sola istanza: una seconda apertura raddoppierebbe proxy e connessioni al provider
+tauri-plugin-single-instance = "2"
+# dimensione, posizione e stato massimizzato della finestra tra un avvio e l'altro
+tauri-plugin-window-state = "2"
 
 [profile.release]
 codegen-units = 1

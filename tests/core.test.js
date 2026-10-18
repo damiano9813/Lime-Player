@@ -326,3 +326,61 @@ test('impostazioni: valori ammessi e predefiniti', () => {
     { audioOut: 'orig', quality: 'high', audioLang: 'ita', subLang: 'eng', external: 'vlc' });
   assert.deepEqual(X.normalizeSettings({ audioOut: '7.1', quality: 'ultra', audioLang: 'und', external: 'kodi', extra: 1 }), X.SETTINGS_DEFAULTS);
 });
+
+test('dati per account: id stabile e chiavi separate', () => {
+  const a = X.accountId('http://h:8080', 'mario');
+  assert.match(a, /^[0-9a-f]{8}$/);
+  assert.equal(X.accountId('http://h:8080', ' mario '), a);
+  assert.notEqual(X.accountId('http://h:8080', 'luigi'), a);
+  assert.notEqual(X.accountId('http://altro:8080', 'mario'), a);
+  // valore fisso: cambiarlo renderebbe irraggiungibili i dati già salvati
+  assert.equal(X.accountId('', ''), '0f0c6cdd');
+  assert.equal(X.accountKey(a, 'fav.live'), `xp.a.${a}.fav.live`);
+});
+
+test('migrazione delle chiavi senza account', () => {
+  const keys = ['xp.fav.live', 'xp.recent.vod', 'xp.cat.series', 'xp.resume.123', 'xp.resume.ep.9', 'xp.route.55',
+    'xp.series.last.7', 'xp.settings', 'xp.volume', 'xp.mode', 'xp.credentials', 'xp.latTarget.min', 'xp.fav.altro',
+    'xp.a.0000abcd.fav.live'];
+  assert.deepEqual(X.legacyKeyMoves(keys, 'deadbeef'), [
+    ['xp.fav.live', 'xp.a.deadbeef.fav.live'],
+    ['xp.recent.vod', 'xp.a.deadbeef.recent.vod'],
+    ['xp.cat.series', 'xp.a.deadbeef.cat.series'],
+    ['xp.resume.123', 'xp.a.deadbeef.resume.123'],
+    ['xp.resume.ep.9', 'xp.a.deadbeef.resume.ep.9'],
+    ['xp.route.55', 'xp.a.deadbeef.route.55'],
+    ['xp.series.last.7', 'xp.a.deadbeef.series.last.7'],
+  ]);
+  assert.deepEqual(X.legacyKeyMoves(null, 'x'), []);
+  // le vecchie posizioni (solo secondi) prendono la data della migrazione
+  assert.deepEqual(X.migratedValue('xp.resume.123', 840, 1000), { p: 840, t: 1000 });
+  assert.deepEqual(X.migratedValue('xp.route.55', { v: 'h264', t: 5 }, 1000), { v: 'h264', t: 5 });
+  assert.deepEqual(X.migratedValue('xp.fav.live', [1], 1000), [1]);
+});
+
+test('posizioni di ripresa: formato vecchio e nuovo', () => {
+  assert.equal(X.resumeSeconds(120), 120);
+  assert.equal(X.resumeSeconds({ p: 95, t: 1 }), 95);
+  assert.equal(X.resumeSeconds(null), 0);
+  assert.equal(X.resumeSeconds({ t: 1 }), 0);
+  assert.equal(X.resumeSeconds('12'), 0);
+  assert.equal(X.resumeSeconds(-4), 0);
+});
+
+test('pulizia di posizioni e percorsi salvati', () => {
+  assert.equal(X.prunableKind('xp.a.deadbeef.resume.12'), 'resume');
+  assert.equal(X.prunableKind('xp.a.deadbeef.resume.ep.12'), 'resume');
+  assert.equal(X.prunableKind('xp.a.deadbeef.route.12'), 'route');
+  assert.equal(X.prunableKind('xp.a.deadbeef.fav.live'), '');
+  assert.equal(X.prunableKind('xp.resume.12'), '');
+  const now = 1000000, limits = { maxAgeMs: 100, maxCount: 2 };
+  const entries = [
+    { key: 'vecchia', t: now - 101 },
+    { key: 'senza-data', t: 0 },
+    { key: 'a', t: now - 10 },
+    { key: 'b', t: now - 50 },
+    { key: 'c', t: now - 1 },
+  ];
+  assert.deepEqual(X.staleEntries(entries, now, limits).sort(), ['b', 'senza-data', 'vecchia']);
+  assert.deepEqual(X.staleEntries([], now, limits), []);
+});

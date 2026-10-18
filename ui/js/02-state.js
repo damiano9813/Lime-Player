@@ -19,7 +19,10 @@ const S = {
   mode: MODES.includes(lsGet('xp.mode', 'live')) ? lsGet('xp.mode', 'live') : 'live',
   categories: perMode(() => null),
   catNames: perMode(() => new Map()),
-  selectedCat: perMode((m) => lsGet('xp.cat.' + m, ALL)),
+  // id dell'account collegato (XPCore.accountId): prefisso dei dati legati al provider
+  acct: '',
+  // categoria scelta, preferiti e recenti si caricano al login (loadAccountData)
+  selectedCat: perMode(() => ALL),
   cache: new Map(),
   listAge: new Map(),
   list: [],
@@ -30,8 +33,8 @@ const S = {
   currentMode: null,
   currentUrl: '',
   previous: null,
-  favorites: perMode((m) => lsGet('xp.fav.' + m, [])),
-  recent: perMode((m) => lsGet('xp.recent.' + m, [])),
+  favorites: perMode(() => []),
+  recent: perMode(() => []),
   // serie aperta nella colonna centrale: { item, info, season }
   seriesView: null,
   liveFormat: ['ts', 'm3u8', 'ffmpeg'].includes(lsGet('xp.liveFormat', 'ts')) ? lsGet('xp.liveFormat', 'ts') : 'ts',
@@ -39,3 +42,50 @@ const S = {
   settings: XPCore.normalizeSettings(lsGet('xp.settings', null)),
   loadSeq: 0,
 };
+
+// ------------------------------------------------------------------ dati per account
+// chiave localStorage dei dati che dipendono dal provider (id di canali, film e serie)
+const ak = (key) => XPCore.accountKey(S.acct, key);
+// posizioni di ripresa e percorsi per canale crescono con ogni contenuto aperto
+const STORE_LIMITS = { maxAgeMs: 180 * 86400000, maxCount: 500 };
+
+// I dati delle versioni senza account passano al primo account che accede dopo l'aggiornamento.
+// Una vecchia chiave presente dopo la migrazione l'ha scritta una versione precedente ancora
+// aperta (stesso localStorage), quindi è la più recente e sostituisce quella dell'account.
+function migrateLegacyData() {
+  const now = Date.now();
+  for (const [from, to] of XPCore.legacyKeyMoves(lsKeys(), S.acct)) {
+    const v = lsGet(from, null);
+    if (v != null) lsSet(to, XPCore.migratedValue(from, v, now));
+    lsDel(from);
+  }
+}
+
+// cancella le voci più vecchie di 180 giorni e, per tipo, quelle oltre le 500 più recenti (tutti gli account)
+function pruneStoredData() {
+  const groups = { resume: [], route: [] };
+  for (const key of lsKeys()) {
+    const kind = XPCore.prunableKind(key);
+    if (!kind) continue;
+    const v = lsGet(key, null);
+    groups[kind].push({ key, t: (v && Number(v.t)) || 0 });
+  }
+  const now = Date.now();
+  for (const list of Object.values(groups)) XPCore.staleEntries(list, now, STORE_LIMITS).forEach(lsDel);
+}
+
+function loadAccountData() {
+  S.acct = XPCore.accountId(S.creds.server, S.creds.username);
+  migrateLegacyData();
+  pruneStoredData();
+  S.selectedCat = perMode((m) => lsGet(ak('cat.' + m), ALL));
+  S.favorites = perMode((m) => lsGet(ak('fav.' + m), []));
+  S.recent = perMode((m) => lsGet(ak('recent.' + m), []));
+}
+
+function unloadAccountData() {
+  S.acct = '';
+  S.selectedCat = perMode(() => ALL);
+  S.favorites = perMode(() => []);
+  S.recent = perMode(() => []);
+}

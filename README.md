@@ -197,6 +197,22 @@ PATH.
   vault e `localStorage`.
 - I certificati HTTPS non validi vengono accettati, perché molti provider IPTV usano certificati self-signed.
 - Librerie e CSS sono locali (`ui/vendor/`, versioni fissate in `package.json`): niente CDN.
+- **CSP** (`app.security.csp` in `tauri.conf.json`): script solo dall'app; immagini (loghi e
+  locandine del provider) da qualsiasi `http(s)`; video, sottotitoli e richieste di mpegts.js e
+  hls.js solo dal proxy locale (`http://127.0.0.1:*`) e da `blob:` (MSE e worker). `style-src`
+  ammette `'unsafe-inline'` per gli stili inline, quindi Tauri non vi aggiunge hash
+  (`dangerousDisableAssetCspModification: ["style-src"]`). Una nuova origine va aggiunta qui.
+- **Istanza singola** (`tauri-plugin-single-instance`): una seconda apertura si chiude e porta in
+  primo piano la finestra già aperta, senza un secondo proxy né un'altra connessione al provider.
+- **Finestra**: dimensione, posizione e stato massimizzato si ripristinano all'avvio
+  (`tauri-plugin-window-state`, `%APPDATA%\com.xtreamplayer.desktop\.window-state.json`); lo
+  schermo intero no.
+- **Dati per account**: preferiti, recenti, categoria scelta, posizioni di ripresa, percorsi di
+  conversione per canale e ultimo episodio visto usano gli id del provider, quindi stanno in
+  `localStorage` sotto `xp.a.<id>.` (`XPCore.accountId`: FNV-1a di server normalizzato e utente).
+  Le chiavi senza account delle versioni precedenti passano al primo account che accede.
+  All'accesso si cancellano le posizioni di ripresa e i percorsi più vecchi di 180 giorni e, per
+  ciascuno dei due tipi, quelli oltre i 500 più recenti.
 - **Cache delle liste**: categorie e liste vengono salvate in `%LOCALAPPDATA%\com.xtreamplayer.desktop\lists\`.
   All'avvio si mostrano subito quelle salvate (se hanno meno di 24 ore) e si aggiornano in
   background se hanno più di 10 minuti; senza rete si usa comunque l'ultima lista. Il pulsante

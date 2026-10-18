@@ -20,8 +20,11 @@ function buildStreamUrl(item, mode, fmt) { return XPCore.buildStreamUrl(S.creds,
 // posizione di ripresa: film ed episodi hanno id in spazi diversi; il catch-up non si riprende
 function resumeKey(item) {
   if (!item || item._catchup) return null;
-  return (item._kind === 'episode' ? 'xp.resume.ep.' : 'xp.resume.') + item.stream_id;
+  return ak((item._kind === 'episode' ? 'resume.ep.' : 'resume.') + item.stream_id);
 }
+// secondi salvati; la data del salvataggio serve a cancellare le voci vecchie (pruneStoredData)
+const getResume = (rk) => (rk ? XPCore.resumeSeconds(lsGet(rk, 0)) : 0);
+const setResume = (rk, sec) => lsSet(rk, { p: sec, t: Date.now() });
 function proxied(url, opts) { return XPCore.proxyUrl(S.proxy, url, opts); }
 // qualità e uscita audio vengono dalle impostazioni
 function transcodeUrl(url, r, opts) { return XPCore.transcodeUrl(S.proxy, url, r, { q: S.settings.quality, ac: S.settings.audioOut, ...opts }); }
@@ -50,7 +53,7 @@ async function probeRoute(url) {
 }
 
 // --- percorso di conversione memorizzato per canale ---
-const routeKey = (id) => 'xp.route.' + id;
+const routeKey = (id) => ak('route.' + id);
 function getSavedRoute(id) { return XPCore.normalizeSavedRoute(lsGet(routeKey(id), null)); }
 function saveRoute(id, r) { lsSet(routeKey(id), { v: r.v, a: r.a, at: r.at || 0, t: Date.now() }); }
 
@@ -683,7 +686,7 @@ async function startVod(item, opts) {
   S.currentUrl = url;
   const ext = (item.container_extension || 'mp4').toLowerCase();
   const rk = resumeKey(item);
-  const saved = rk ? lsGet(rk, 0) : 0;
+  const saved = getResume(rk);
   const resumeAt = opts.ss != null ? opts.ss : (saved > 30 ? saved : 0);
   if (!isFinite(P.vodDuration) && item._duration > 0) P.vodDuration = item._duration;
   if (opts.route) { startVodTranscoded(item, url, opts.route, resumeAt, P.vodDuration, false); return; }
@@ -868,7 +871,7 @@ video.addEventListener('timeupdate', () => {
   if (S.current && S.currentMode === 'vod' && video.currentTime > 0) {
     const now = Date.now();
     const rk = resumeKey(S.current);
-    if (rk && now - lastResumeSave > 5000) { lastResumeSave = now; lsSet(rk, Math.floor(currentPlayTime())); }
+    if (rk && now - lastResumeSave > 5000) { lastResumeSave = now; setResume(rk, Math.floor(currentPlayTime())); }
   }
 });
 video.addEventListener('progress', () => updateTimeUi());
