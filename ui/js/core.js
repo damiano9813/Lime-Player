@@ -272,6 +272,75 @@
     const from = now - Math.max(0, Number(days) || 0) * 86400;
     return (entries || []).filter((e) => e.end_ts <= now && e.start_ts >= from).sort((a, b) => b.start_ts - a.start_ts);
   }
+  // ------------------------------------------------------------------ griglia della guida
+  // giorni della griglia, da mezzanotte a mezzanotte locali (23 o 25 ore nei cambi d'ora):
+  // da `past` giorni fa a `future` giorni avanti; `offset` 0 = oggi
+  function guideDays(now, past, future) {
+    const d = new Date(now * 1000);
+    const out = [];
+    for (let o = -Math.max(0, past | 0); o <= Math.max(0, future | 0); o++) {
+      const a = new Date(d.getFullYear(), d.getMonth(), d.getDate() + o);
+      const b = new Date(d.getFullYear(), d.getMonth(), d.getDate() + o + 1);
+      const label = o === 0 ? 'Oggi' : o === -1 ? 'Ieri' : o === 1 ? 'Domani'
+        : a.toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric' });
+      out.push({ offset: o, from: a.getTime() / 1000, to: b.getTime() / 1000, label });
+    }
+    return out;
+  }
+  // giorni di archivio da proporre: il massimo tra i canali con catch-up (1–7)
+  function guidePastDays(channels) {
+    let max = 0;
+    for (const c of channels || []) if (String(c.tv_archive) === '1') max = Math.max(max, Number(c.tv_archive_duration) || 3);
+    return Math.min(7, Math.max(1, max));
+  }
+  // blocchi di una riga dentro [from, to): x e larghezza in px; un programma che si
+  // sovrappone al precedente parte dalla sua fine, quelli rimasti senza durata spariscono
+  function layoutPrograms(entries, from, to, pxPerSec) {
+    const list = (entries || []).filter((e) => e.end_ts > from && e.start_ts < to).sort((a, b) => a.start_ts - b.start_ts);
+    const out = [];
+    let cursor = from;
+    for (const e of list) {
+      const s = Math.max(e.start_ts, cursor), en = Math.min(e.end_ts, to);
+      if (en <= s) continue;
+      out.push({ e, x: (s - from) * pxPerSec, w: (en - s) * pxPerSec });
+      cursor = en;
+    }
+    return out;
+  }
+  // 'live' in onda, 'archive' passato e rivedibile (catch-up), 'past', 'future'
+  function programState(e, now, channel) {
+    if (e.start_ts <= now && e.end_ts > now) return 'live';
+    if (e.start_ts > now) return 'future';
+    const c = channel || {};
+    const days = Number(c.tv_archive_duration) || 3;
+    const inArchive = String(c.tv_archive) === '1' && e.start_ts >= now - days * 86400;
+    return inArchive || e.has_archive ? 'archive' : 'past';
+  }
+  // istanti delle tacche dell'asse orario (ogni `step` secondi da `from`)
+  function timeTicks(from, to, step) {
+    const out = [];
+    for (let t = from; t < to; t += step) out.push(t);
+    return out;
+  }
+  // righe da disegnare per uno scroll verticale (fine esclusa)
+  function visibleRows(scrollTop, viewH, rowH, total, overscan) {
+    const first = Math.floor(Math.max(0, scrollTop) / rowH);
+    const start = Math.max(0, first - overscan);
+    const end = Math.min(total, first + Math.ceil(viewH / rowH) + 1 + overscan);
+    return { start, end: Math.max(start, end) };
+  }
+  // voce della guida per canale (orario del server per il catch-up) più vicina a un
+  // programma della guida completa: stesso inizio entro `tol` secondi
+  function matchProgram(entries, startTs, tol) {
+    const t = tol == null ? 120 : tol;
+    let best = null;
+    for (const e of entries || []) {
+      const d = Math.abs(e.start_ts - startTs);
+      if (d <= t && (!best || d < Math.abs(best.start_ts - startTs))) best = e;
+    }
+    return best;
+  }
+
   const hasCodecs = (c) => !!(c && (c.video_codec || c.audio_codec));
   const episodeLabel = (e) => `S${String(e.season).padStart(2, '0')}E${String(e.episode_num).padStart(2, '0')}`;
   function nextEpisode(episodes, currentId) {
@@ -329,6 +398,7 @@
     normLang, langName, codecName, channelsLabel, trackLabel, pickTrack, audioCopyOk, audioTrackRoute, PREFERRED_LANGS,
     SETTINGS_DEFAULTS, normalizeSettings,
     currentAndNext, epgProgress, archivedPrograms, hasCodecs, episodeLabel, nextEpisode,
+    guideDays, guidePastDays, layoutPrograms, programState, timeTicks, visibleRows, matchProgram,
     audioMime, probeVideoOk, probeAudioOk, mergeRoute, describeRoute, normalizeSavedRoute, mediaInfoRoute,
     latencyStep, stallTarget, relaxTarget,
   };

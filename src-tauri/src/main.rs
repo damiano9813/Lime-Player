@@ -5,6 +5,7 @@ mod cache;
 mod catalog;
 mod creds;
 mod external;
+mod guide;
 mod media;
 mod proxy;
 mod state;
@@ -88,6 +89,8 @@ fn main() {
             cache::clear_list_cache,
             catalog::get_short_epg,
             catalog::get_epg_day,
+            guide::load_guide,
+            guide::get_guide_programmes,
             catalog::get_series_list,
             catalog::get_series_info,
             catalog::get_vod_info,

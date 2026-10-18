@@ -28,12 +28,17 @@ pub struct CacheKey {
     pub category: String,
 }
 
+/// Id della cartella di un account (server normalizzato + utente).
+pub fn account_hash(server: &str, username: &str) -> String {
+    let mut h = DefaultHasher::new();
+    server.hash(&mut h);
+    username.trim().hash(&mut h);
+    format!("{:016x}", h.finish())
+}
+
 impl CacheKey {
     fn account_hash(&self) -> String {
-        let mut h = DefaultHasher::new();
-        self.server.hash(&mut h);
-        self.username.trim().hash(&mut h);
-        format!("{:016x}", h.finish())
+        account_hash(&self.server, &self.username)
     }
 
     fn file_name(&self) -> String {
@@ -91,6 +96,11 @@ pub fn now_secs() -> u64 {
 
 fn lists_dir(app: &AppHandle) -> Option<PathBuf> {
     app.path().app_cache_dir().ok().map(|d| d.join("lists"))
+}
+
+/// Cartella dei dati salvati di un account (`server` già normalizzato).
+pub fn account_dir(app: &AppHandle, server: &str, username: &str) -> Option<PathBuf> {
+    lists_dir(app).map(|d| d.join(account_hash(server, username)))
 }
 
 fn entry_path(app: &AppHandle, key: &CacheKey) -> Option<PathBuf> {
@@ -179,9 +189,10 @@ where
     Ok(Listing { items: fresh, from_cache: false, fetched_at: now })
 }
 
-/// Cancella tutte le liste salvate (logout / svuota cache).
+/// Cancella tutte le liste salvate, guida TV compresa (logout / svuota cache).
 #[tauri::command]
 pub fn clear_list_cache(app: AppHandle) -> Result<(), String> {
+    crate::guide::forget();
     match lists_dir(&app) {
         Some(dir) if dir.exists() => std::fs::remove_dir_all(&dir).map_err(|e| format!("Impossibile svuotare la cache: {}", e)),
         _ => Ok(()),

@@ -82,6 +82,64 @@ test('guida TV: in onda, successivo, avanzamento, archivio', () => {
   assert.deepEqual(X.archivedPrograms(arch, now, 0), []);
 });
 
+test('griglia della guida: giorni da mezzanotte a mezzanotte locali', () => {
+  const now = new Date(2026, 9, 18, 15, 30).getTime() / 1000;
+  const days = X.guideDays(now, 2, 1);
+  assert.deepEqual(days.map((d) => d.offset), [-2, -1, 0, 1]);
+  assert.deepEqual(days.slice(1).map((d) => d.label), ['Ieri', 'Oggi', 'Domani']);
+  assert.equal(days[2].from, new Date(2026, 9, 18).getTime() / 1000);
+  assert.equal(days[2].to, new Date(2026, 9, 19).getTime() / 1000);
+  assert.ok(days[2].from <= now && now < days[2].to);
+  for (let i = 1; i < days.length; i++) assert.equal(days[i].from, days[i - 1].to, 'giorni contigui anche col cambio dell\'ora');
+  assert.match(days[0].label, /16/, 'gli altri giorni col numero');
+  assert.deepEqual(X.guideDays(now, 0, 0).map((d) => d.label), ['Oggi']);
+  assert.equal(X.guidePastDays([{ tv_archive: '1', tv_archive_duration: '5' }, { tv_archive: 1, tv_archive_duration: 2 }, { tv_archive: '0', tv_archive_duration: '30' }]), 5);
+  assert.equal(X.guidePastDays([{ tv_archive: '1', tv_archive_duration: '' }]), 3, 'durata assente: 3 giorni come il catch-up');
+  assert.equal(X.guidePastDays([{ tv_archive: '1', tv_archive_duration: '14' }]), 7);
+  assert.equal(X.guidePastDays([]), 1);
+});
+
+test('griglia della guida: blocchi, stati, tacche, righe visibili', () => {
+  const px = 0.1; // 6 px al minuto
+  const e = [
+    { title: 'tagliato a sinistra', start_ts: 900, end_ts: 1200 },
+    { title: 'sovrapposto', start_ts: 1500, end_ts: 1800 },
+    { title: 'normale', start_ts: 1200, end_ts: 1600 },
+    { title: 'coperto', start_ts: 1550, end_ts: 1600 },
+    { title: 'fuori', start_ts: 3000, end_ts: 3600 },
+  ];
+  const l = X.layoutPrograms(e, 1000, 2000, px);
+  assert.deepEqual(l.map((b) => [b.e.title, b.x, b.w]), [
+    ['tagliato a sinistra', 0, 20], ['normale', 20, 40], ['sovrapposto', 60, 20],
+  ]);
+  assert.deepEqual(X.layoutPrograms(null, 0, 1, 1), []);
+
+  const now = 10 * 86400;
+  const ch = { tv_archive: '1', tv_archive_duration: '2' };
+  assert.equal(X.programState({ start_ts: now - 60, end_ts: now + 60 }, now, ch), 'live');
+  assert.equal(X.programState({ start_ts: now + 60, end_ts: now + 120 }, now, ch), 'future');
+  assert.equal(X.programState({ start_ts: now - 86400, end_ts: now - 80000 }, now, ch), 'archive');
+  assert.equal(X.programState({ start_ts: now - 3 * 86400, end_ts: now - 3 * 86400 + 60 }, now, ch), 'past', 'oltre l\'archivio');
+  assert.equal(X.programState({ start_ts: now - 600, end_ts: now - 60 }, now, { tv_archive: '0' }), 'past');
+  assert.equal(X.programState({ start_ts: now - 600, end_ts: now - 60, has_archive: true }, now, {}), 'archive', 'archivio dichiarato dal pannello');
+  assert.equal(X.programState({ start_ts: now - 600, end_ts: now }, now, ch), 'archive', 'appena finito');
+
+  assert.deepEqual(X.timeTicks(0, 5400, 1800), [0, 1800, 3600]);
+  assert.deepEqual(X.visibleRows(0, 300, 50, 100, 2), { start: 0, end: 9 });
+  assert.deepEqual(X.visibleRows(1000, 300, 50, 100, 2), { start: 18, end: 29 });
+  assert.deepEqual(X.visibleRows(4900, 300, 50, 100, 2), { start: 96, end: 100 });
+  assert.deepEqual(X.visibleRows(-20, 300, 50, 0, 2), { start: 0, end: 0 });
+});
+
+test('griglia della guida: programma corrispondente per il catch-up', () => {
+  const day = [{ start_ts: 1000, start: 'a' }, { start_ts: 1090, start: 'b' }, { start_ts: 4000, start: 'c' }];
+  assert.equal(X.matchProgram(day, 1100).start, 'b', 'il più vicino');
+  assert.equal(X.matchProgram(day, 940).start, 'a');
+  assert.equal(X.matchProgram(day, 2000), null);
+  assert.equal(X.matchProgram(day, 4300, 300).start, 'c');
+  assert.equal(X.matchProgram(null, 1), null);
+});
+
 test('serie: codec dichiarati, etichette, episodio successivo', () => {
   assert.equal(X.hasCodecs({ video_codec: 'hevc', audio_codec: '' }), true);
   assert.equal(X.hasCodecs({ video_codec: '', audio_codec: '' }), false);

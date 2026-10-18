@@ -92,6 +92,8 @@ async function logout() {
   S.categories = perMode(() => null);
   S.catNames = perMode(() => new Map());
   closeSeries();
+  closeGuide();
+  resetGuide();
   S.list = []; S.filtered = [];
   $('f-pass').value = '';
   $('app-view').classList.add('hidden');

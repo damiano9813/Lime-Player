@@ -44,6 +44,12 @@ document.addEventListener('keydown', (ev) => {
     return;
   }
   if (ev.ctrlKey || ev.altKey || ev.metaKey) return;
+  if (guideOpen()) {
+    if (ev.key === 'Escape' || ev.key === 'g' || ev.key === 'G') { ev.preventDefault(); closeGuide(); return; }
+    // frecce e pagine scorrono la griglia; i comandi del player la chiudono prima
+    if (/^(Arrow|Page|Home$|End$)/.test(ev.key)) return;
+    if (/^[fFtTpP/0-9]$/.test(ev.key)) closeGuide();
+  }
   if (/^[0-9]$/.test(ev.key) && S.mode === 'live') { ev.preventDefault(); zapDigit(ev.key); return; }
   if (ev.key === 'Enter' && Z.digits) { ev.preventDefault(); zapCommit(); return; }
   switch (ev.key) {
@@ -65,6 +71,7 @@ document.addEventListener('keydown', (ev) => {
     case 'ArrowLeft': if (S.currentMode === 'vod') { ev.preventDefault(); seekBy(-10); } break;
     case '/': ev.preventDefault(); if (theaterOn()) setTheater(false); closeSeries(); $('stream-search').focus(); $('stream-search').select(); break;
     case '?': ev.preventDefault(); showShortcuts(); break;
+    case 'g': case 'G': if (S.mode === 'live') { ev.preventDefault(); openGuide(); } break;
     case 'Escape':
       if (tracksMenuOpen()) closeTracksMenu();
       else if (S.seriesView && !theaterOn()) closeSeries();

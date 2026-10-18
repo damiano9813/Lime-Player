@@ -10,6 +10,7 @@ function updateModeButtons() {
     b.setAttribute('aria-selected', String(active));
   });
   $('stream-search').placeholder = { vod: 'Cerca film', series: 'Cerca serie' }[S.mode] || 'Cerca canale';
+  $('list-guide').classList.toggle('hidden', S.mode !== 'live');
 }
 document.querySelectorAll('.mode-btn').forEach((b) => b.addEventListener('click', () => switchMode(b.dataset.mode)));
 
@@ -17,6 +18,7 @@ async function switchMode(mode, force) {
   if (!MODES.includes(mode)) return;
   if (mode === S.mode && !force) return;
   closeSeries();
+  if (mode !== 'live') closeGuide();
   S.mode = mode;
   lsSet('xp.mode', mode);
   updateModeButtons();
@@ -202,6 +204,7 @@ function applyFilter(resetScroll) {
   }
   renderList(true);
   updateLocateButton();
+  onGuideListChanged(resetScroll);
 }
 
 function currentIndex() {
