@@ -61,13 +61,7 @@ pub fn flex_f64<'de, D: Deserializer<'de>>(d: D) -> Result<f64, D::Error> {
     Ok(match v {
         Some(Value::Number(n)) => n.as_f64().unwrap_or(0.0),
         Some(Value::String(s)) => s.trim().replace(',', ".").parse::<f64>().unwrap_or(0.0),
-        Some(Value::Bool(b)) => {
-            if b {
-                1.0
-            } else {
-                0.0
-            }
-        }
+        Some(Value::Bool(true)) => 1.0,
         _ => 0.0,
     })
 }
@@ -182,7 +176,12 @@ pub fn normalize_server(raw: &str) -> Result<String, String> {
     url.set_query(None);
     url.set_fragment(None);
     let mut path = url.path().trim_end_matches('/').to_string();
-    for suffix in ["/player_api.php", "/panel_api.php", "/get.php", "/xmltv.php"] {
+    for suffix in [
+        "/player_api.php",
+        "/panel_api.php",
+        "/get.php",
+        "/xmltv.php",
+    ] {
         if path.to_ascii_lowercase().ends_with(suffix) {
             let new_len = path.len() - suffix.len();
             path.truncate(new_len);
@@ -221,9 +220,16 @@ pub async fn api_get(
     let body = resp.text().await.map_err(describe_reqwest_error)?;
     if !status.is_success() {
         return Err(match status.as_u16() {
-            401 | 403 => "Accesso negato (HTTP 401/403): credenziali errate, account scaduto o IP bloccato".to_string(),
-            404 => "player_api.php non trovato (HTTP 404): controlla l'URL e la porta del server".to_string(),
-            512 | 513 | 884 => format!("Il server ha rifiutato la richiesta (HTTP {})", status.as_u16()),
+            401 | 403 => {
+                "Accesso negato (HTTP 401/403): credenziali errate, account scaduto o IP bloccato"
+                    .to_string()
+            }
+            404 => "player_api.php non trovato (HTTP 404): controlla l'URL e la porta del server"
+                .to_string(),
+            512 | 513 | 884 => format!(
+                "Il server ha rifiutato la richiesta (HTTP {})",
+                status.as_u16()
+            ),
             code => format!("Il server ha risposto con HTTP {}", code),
         });
     }
@@ -324,11 +330,21 @@ pub async fn get_categories(
         return Err(format!("Modalità categorie non supportata: {}", mode));
     }
     let server = normalize_server(&server)?;
-    let key = CacheKey { server: server.clone(), username: username.clone(), action: mode.clone(), category: String::new() };
+    let key = CacheKey {
+        server: server.clone(),
+        username: username.clone(),
+        action: mode.clone(),
+        category: String::new(),
+    };
     let client = state.client.clone();
     load_list(app, key, cache.as_deref().unwrap_or("prefer"), move || {
-        let (client, server, username, password, mode) =
-            (client.clone(), server.clone(), username.clone(), password.clone(), mode.clone());
+        let (client, server, username, password, mode) = (
+            client.clone(),
+            server.clone(),
+            username.clone(),
+            password.clone(),
+            mode.clone(),
+        );
         async move { fetch_categories(&client, &server, &username, &password, &mode).await }
     })
     .await
@@ -371,12 +387,27 @@ pub async fn get_streams(
     }
     let server = normalize_server(&server)?;
     let cat = category_id.trim().to_string();
-    let cat = if cat == "all" || cat == "*" { String::new() } else { cat };
-    let key = CacheKey { server: server.clone(), username: username.clone(), action: mode.clone(), category: cat.clone() };
+    let cat = if cat == "all" || cat == "*" {
+        String::new()
+    } else {
+        cat
+    };
+    let key = CacheKey {
+        server: server.clone(),
+        username: username.clone(),
+        action: mode.clone(),
+        category: cat.clone(),
+    };
     let client = state.client.clone();
     load_list(app, key, cache.as_deref().unwrap_or("prefer"), move || {
-        let (client, server, username, password, mode, cat) =
-            (client.clone(), server.clone(), username.clone(), password.clone(), mode.clone(), cat.clone());
+        let (client, server, username, password, mode, cat) = (
+            client.clone(),
+            server.clone(),
+            username.clone(),
+            password.clone(),
+            mode.clone(),
+            cat.clone(),
+        );
         async move { fetch_streams(&client, &server, &username, &password, &mode, &cat).await }
     })
     .await
@@ -418,14 +449,23 @@ mod tests {
 
     #[test]
     fn normalize_server_cases() {
-        assert_eq!(normalize_server("example.com:8080").unwrap(), "http://example.com:8080");
+        assert_eq!(
+            normalize_server("example.com:8080").unwrap(),
+            "http://example.com:8080"
+        );
         assert_eq!(
             normalize_server(" http://x.com:8080/player_api.php?username=a&password=b ").unwrap(),
             "http://x.com:8080"
         );
         assert_eq!(normalize_server("https://x.com/").unwrap(), "https://x.com");
-        assert_eq!(normalize_server("http://x.com/sub/get.php").unwrap(), "http://x.com/sub");
-        assert_eq!(normalize_server("HTTP://X.com:80/").unwrap(), "http://x.com");
+        assert_eq!(
+            normalize_server("http://x.com/sub/get.php").unwrap(),
+            "http://x.com/sub"
+        );
+        assert_eq!(
+            normalize_server("HTTP://X.com:80/").unwrap(),
+            "http://x.com"
+        );
         assert!(normalize_server("").is_err());
         assert!(normalize_server("ftp://x.com").is_err());
     }

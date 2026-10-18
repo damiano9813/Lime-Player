@@ -1,0 +1,60 @@
+# Controlli a ogni push e pull request verso main: test del frontend, formattazione,
+# clippy e test del backend Rust. La release (release.yml) resta legata ai tag.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# un nuovo push sullo stesso ramo annulla il controllo ancora in corso
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Dipendenze frontend
+        run: npm ci
+
+      # passi separati: in pwsh conta solo il codice d'uscita dell'ultimo comando
+      - name: Test frontend
+        run: npm test
+
+      # tauri-build vuole i file di bundle.externalBin anche per compilare
+      - name: ffmpeg per il build
+        run: npm run fetch:ffmpeg
+
+      - name: Formattazione Rust
+        working-directory: src-tauri
+        run: cargo fmt --check
+
+      - name: Clippy
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Test Rust
+        working-directory: src-tauri
+        run: cargo test

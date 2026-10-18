@@ -72,7 +72,10 @@ pub struct ProbeTrack {
 
 /// Sottotitoli che ffmpeg converte in WebVTT; DVB, PGS e DVD sono immagini.
 pub fn is_text_subtitle(codec: &str) -> bool {
-    matches!(codec, "subrip" | "srt" | "ass" | "ssa" | "mov_text" | "webvtt" | "text")
+    matches!(
+        codec,
+        "subrip" | "srt" | "ass" | "ssa" | "mov_text" | "webvtt" | "text"
+    )
 }
 
 /// Qualità della conversione video scelta nelle impostazioni (`q=` nel percorso `/t/`).
@@ -110,7 +113,10 @@ pub fn tool_dirs() -> Vec<PathBuf> {
         env_path("ProgramFiles", &["ffmpeg", "bin"]),
         Some(PathBuf::from(r"C:\ffmpeg\bin")),
         env_path("USERPROFILE", &["scoop", "shims"]),
-        env_path("USERPROFILE", &["scoop", "apps", "ffmpeg", "current", "bin"]),
+        env_path(
+            "USERPROFILE",
+            &["scoop", "apps", "ffmpeg", "current", "bin"],
+        ),
         env_path("ProgramData", &["chocolatey", "bin"]),
     ];
     dirs.extend(known.into_iter().flatten());
@@ -175,8 +181,8 @@ pub fn encoder_args(encoder: &str, quality: Quality) -> Vec<&'static str> {
                 High => ("p5", "ll", "20"),
             };
             args.extend([
-                "-preset", preset, "-tune", tune, "-rc", "vbr", "-cq", cq, "-b:v", "0", "-maxrate", "12M",
-                "-bufsize", "6M", "-g", "50", "-bf", "0", "-pix_fmt", "yuv420p",
+                "-preset", preset, "-tune", tune, "-rc", "vbr", "-cq", cq, "-b:v", "0", "-maxrate",
+                "12M", "-bufsize", "6M", "-g", "50", "-bf", "0", "-pix_fmt", "yuv420p",
             ]);
         }
         "h264_qsv" => {
@@ -187,8 +193,18 @@ pub fn encoder_args(encoder: &str, quality: Quality) -> Vec<&'static str> {
                 High => ("medium", "20"),
             };
             args.extend([
-                "-preset", preset, "-global_quality", q, "-look_ahead", "0", "-g", "50", "-bf", "0",
-                "-pix_fmt", "nv12",
+                "-preset",
+                preset,
+                "-global_quality",
+                q,
+                "-look_ahead",
+                "0",
+                "-g",
+                "50",
+                "-bf",
+                "0",
+                "-pix_fmt",
+                "nv12",
             ]);
         }
         "h264_amf" => {
@@ -199,8 +215,22 @@ pub fn encoder_args(encoder: &str, quality: Quality) -> Vec<&'static str> {
                 High => ("quality", "20", "22"),
             };
             args.extend([
-                "-usage", "lowlatency", "-quality", q, "-rc", "cqp", "-qp_i", qp_i, "-qp_p", qp_p, "-g",
-                "50", "-bf", "0", "-pix_fmt", "yuv420p",
+                "-usage",
+                "lowlatency",
+                "-quality",
+                q,
+                "-rc",
+                "cqp",
+                "-qp_i",
+                qp_i,
+                "-qp_p",
+                qp_p,
+                "-g",
+                "50",
+                "-bf",
+                "0",
+                "-pix_fmt",
+                "yuv420p",
             ]);
         }
         // Media Foundation: unico encoder H.264 della build LGPL inclusa nell'installer
@@ -212,8 +242,18 @@ pub fn encoder_args(encoder: &str, quality: Quality) -> Vec<&'static str> {
                 High => "70",
             };
             args.extend([
-                "-rate_control", "quality", "-quality", q, "-scenario", "live_streaming", "-g", "50", "-bf",
-                "0", "-pix_fmt", "nv12",
+                "-rate_control",
+                "quality",
+                "-quality",
+                q,
+                "-scenario",
+                "live_streaming",
+                "-g",
+                "50",
+                "-bf",
+                "0",
+                "-pix_fmt",
+                "nv12",
             ]);
         }
         _ => {
@@ -224,7 +264,17 @@ pub fn encoder_args(encoder: &str, quality: Quality) -> Vec<&'static str> {
             };
             args.push("libx264");
             args.extend([
-                "-preset", preset, "-tune", "zerolatency", "-crf", crf, "-g", "50", "-bf", "0", "-pix_fmt",
+                "-preset",
+                preset,
+                "-tune",
+                "zerolatency",
+                "-crf",
+                crf,
+                "-g",
+                "50",
+                "-bf",
+                "0",
+                "-pix_fmt",
                 "yuv420p",
             ]);
         }
@@ -261,7 +311,12 @@ pub async fn detect_media_tools() -> MediaTools {
     // libx264 manca nella build LGPL: lì resta h264_mf (Media Foundation)
     for enc in DETECT_ORDER {
         let mut args = vec![
-            "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
             "color=c=black:s=640x360:r=25:d=0.4",
         ];
         // si prova con la qualità bilanciata, valida per tutte le schede supportate
@@ -312,23 +367,35 @@ pub async fn get_media_capabilities(refresh: Option<bool>) -> Result<MediaCaps, 
 
 #[tauri::command]
 pub async fn probe_stream(stream_url: String) -> Result<ProbeInfo, String> {
-    let url = Url::parse(stream_url.trim()).map_err(|_| "URL dello stream non valido".to_string())?;
+    let url =
+        Url::parse(stream_url.trim()).map_err(|_| "URL dello stream non valido".to_string())?;
     if !matches!(url.scheme(), "http" | "https") {
         return Err("Sono supportati solo URL http:// e https://".to_string());
     }
     // un film convertito in pausa tiene la connessione al provider
     crate::transcode::release_parked();
     let tools = media_tools(false).await;
-    let ffprobe = tools
-        .ffprobe
-        .clone()
-        .ok_or_else(|| "ffprobe non trovato: installa ffmpeg (winget install Gyan.FFmpeg)".to_string())?;
+    let ffprobe = tools.ffprobe.clone().ok_or_else(|| {
+        "ffprobe non trovato: installa ffmpeg (winget install Gyan.FFmpeg)".to_string()
+    })?;
     let out = run_output(
         &ffprobe,
         &[
-            "-v", "error", "-user_agent", USER_AGENT, "-rw_timeout", "15000000", "-probesize",
-            "3000000", "-analyzeduration", "3000000", "-print_format", "json", "-show_format",
-            "-show_streams", url.as_str(),
+            "-v",
+            "error",
+            "-user_agent",
+            USER_AGENT,
+            "-rw_timeout",
+            "15000000",
+            "-probesize",
+            "3000000",
+            "-analyzeduration",
+            "3000000",
+            "-print_format",
+            "json",
+            "-show_format",
+            "-show_streams",
+            url.as_str(),
         ],
         25,
     )
@@ -350,7 +417,11 @@ pub fn parse_probe(v: &Value) -> ProbeInfo {
         info.duration = field(format, "duration").parse::<f64>().unwrap_or(0.0);
     }
     let tag = |s: &Value, name: &str| s.get("tags").map(|t| field(t, name)).unwrap_or_default();
-    let flag = |s: &Value, name: &str| s.get("disposition").map(|d| field(d, name) == "1").unwrap_or(false);
+    let flag = |s: &Value, name: &str| {
+        s.get("disposition")
+            .map(|d| field(d, name) == "1")
+            .unwrap_or(false)
+    };
     if let Some(streams) = v.get("streams").and_then(|s| s.as_array()) {
         for s in streams {
             let codec = field(s, "codec_name");
@@ -369,7 +440,11 @@ pub fn parse_probe(v: &Value) -> ProbeInfo {
                 }
                 kind @ ("audio" | "subtitle") => {
                     let channels = field(s, "channels").parse().unwrap_or(0);
-                    let list = if kind == "audio" { &mut info.audio } else { &mut info.subtitles };
+                    let list = if kind == "audio" {
+                        &mut info.audio
+                    } else {
+                        &mut info.subtitles
+                    };
                     list.push(ProbeTrack {
                         index: list.len(),
                         text: kind == "subtitle" && is_text_subtitle(&codec),
@@ -450,28 +525,52 @@ pub fn audio_args(a: &str, surround: bool, source_channels: i64) -> Vec<String> 
     if a == "copy" {
         push_args(&mut args, &["-c:a", "copy"]);
     } else if surround && source_channels >= 6 {
-        push_args(&mut args, &["-c:a", "aac", "-b:a", "384k", "-ac", "6", "-ar", "48000"]);
+        push_args(
+            &mut args,
+            &["-c:a", "aac", "-b:a", "384k", "-ac", "6", "-ar", "48000"],
+        );
     } else if surround && source_channels <= 0 {
         // canali non noti (live): 5.1 resta 5.1, stereo e mono escono in stereo, 7.1 diventa 5.1
         push_args(
             &mut args,
-            &["-c:a", "aac", "-b:a", "384k", "-af", "aformat=channel_layouts=5.1|stereo", "-ar", "48000"],
+            &[
+                "-c:a",
+                "aac",
+                "-b:a",
+                "384k",
+                "-af",
+                "aformat=channel_layouts=5.1|stereo",
+                "-ar",
+                "48000",
+            ],
         );
     } else {
-        push_args(&mut args, &["-c:a", "aac", "-b:a", "192k", "-ac", "2", "-ar", "48000"]);
+        push_args(
+            &mut args,
+            &["-c:a", "aac", "-b:a", "192k", "-ac", "2", "-ar", "48000"],
+        );
     }
     args
 }
 
 pub fn build_ffmpeg_args(job: &FfmpegJob) -> Vec<String> {
     let mut args: Vec<String> = Vec::new();
-    push_args(&mut args, &["-hide_banner", "-loglevel", "error", "-nostdin"]);
+    push_args(
+        &mut args,
+        &["-hide_banner", "-loglevel", "error", "-nostdin"],
+    );
     if !job.from_pipe {
         push_args(
             &mut args,
             &[
-                "-user_agent", USER_AGENT, "-reconnect", "1", "-reconnect_on_network_error", "1",
-                "-reconnect_delay_max", "3",
+                "-user_agent",
+                USER_AGENT,
+                "-reconnect",
+                "1",
+                "-reconnect_on_network_error",
+                "1",
+                "-reconnect_delay_max",
+                "3",
             ],
         );
     }
@@ -479,18 +578,42 @@ pub fn build_ffmpeg_args(job: &FfmpegJob) -> Vec<String> {
         if !job.from_pipe {
             // dopo un cambio canale il provider può contare ancora per un attimo la
             // connessione precedente (limite connessioni): si riprova invece di fallire
-            push_args(&mut args, &["-reconnect_streamed", "1", "-reconnect_on_http_error", "4xx,5xx"]);
+            push_args(
+                &mut args,
+                &[
+                    "-reconnect_streamed",
+                    "1",
+                    "-reconnect_on_http_error",
+                    "4xx,5xx",
+                ],
+            );
         }
         // analisi breve e nessun buffer interno: il primo pacchetto esce il prima possibile
         push_args(
             &mut args,
             &[
-                "-fflags", "+nobuffer+discardcorrupt+genpts", "-flags", "low_delay", "-probesize",
-                "1000000", "-analyzeduration", "1000000",
+                "-fflags",
+                "+nobuffer+discardcorrupt+genpts",
+                "-flags",
+                "low_delay",
+                "-probesize",
+                "1000000",
+                "-analyzeduration",
+                "1000000",
             ],
         );
     } else {
-        push_args(&mut args, &["-fflags", "+genpts", "-probesize", "5000000", "-analyzeduration", "5000000"]);
+        push_args(
+            &mut args,
+            &[
+                "-fflags",
+                "+genpts",
+                "-probesize",
+                "5000000",
+                "-analyzeduration",
+                "5000000",
+            ],
+        );
         if job.ss > 0.5 {
             args.push("-ss".to_string());
             args.push(format!("{:.3}", job.ss));
@@ -500,11 +623,19 @@ pub fn build_ffmpeg_args(job: &FfmpegJob) -> Vec<String> {
         push_args(&mut args, &["-f", "mpegts"]);
     }
     let audio_map = format!("0:a:{}?", job.audio_index);
-    push_args(&mut args, &["-i", job.input, "-map", "0:v:0?", "-map", &audio_map, "-sn", "-dn"]);
+    push_args(
+        &mut args,
+        &[
+            "-i", job.input, "-map", "0:v:0?", "-map", &audio_map, "-sn", "-dn",
+        ],
+    );
     if job.v == "h264" {
         // i canali DVB sono spesso interlacciati (1080i/576i), che WebView2 non decodifica:
         // si deinterlaccia a doppio frame rate (50p) solo i fotogrammi marcati come interlacciati
-        push_args(&mut args, &["-vf", "bwdif=mode=send_field:deint=interlaced"]);
+        push_args(
+            &mut args,
+            &["-vf", "bwdif=mode=send_field:deint=interlaced"],
+        );
         push_args(&mut args, &encoder_args(job.encoder, job.quality));
     } else {
         push_args(&mut args, &["-c:v", "copy"]);
@@ -512,13 +643,36 @@ pub fn build_ffmpeg_args(job: &FfmpegJob) -> Vec<String> {
     args.extend(audio_args(job.a, job.surround, job.source_channels));
     push_args(
         &mut args,
-        &["-f", "mpegts", "-muxdelay", "0", "-muxpreload", "0", "-flush_packets", "1", "pipe:1"],
+        &[
+            "-f",
+            "mpegts",
+            "-muxdelay",
+            "0",
+            "-muxpreload",
+            "0",
+            "-flush_packets",
+            "1",
+            "pipe:1",
+        ],
     );
     // uscite aggiuntive: una per ogni traccia di sottotitoli, con la stessa linea temporale
     // del video (anche dopo un seek con -ss) e senza una seconda connessione al provider
     for (index, url) in &job.subtitle_outputs {
         let map = format!("0:s:{}", index);
-        push_args(&mut args, &["-map", &map, "-c:s", "webvtt", "-flush_packets", "1", "-f", "webvtt", url]);
+        push_args(
+            &mut args,
+            &[
+                "-map",
+                &map,
+                "-c:s",
+                "webvtt",
+                "-flush_packets",
+                "1",
+                "-f",
+                "webvtt",
+                url,
+            ],
+        );
     }
     args
 }
@@ -530,8 +684,18 @@ pub fn build_subtitle_args(url: &str, index: usize, ss: f64) -> Vec<String> {
     push_args(
         &mut args,
         &[
-            "-hide_banner", "-loglevel", "error", "-nostdin", "-user_agent", USER_AGENT, "-reconnect", "1",
-            "-reconnect_on_network_error", "1", "-reconnect_delay_max", "3",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-nostdin",
+            "-user_agent",
+            USER_AGENT,
+            "-reconnect",
+            "1",
+            "-reconnect_on_network_error",
+            "1",
+            "-reconnect_delay_max",
+            "3",
         ],
     );
     if ss > 0.5 {
@@ -541,7 +705,19 @@ pub fn build_subtitle_args(url: &str, index: usize, ss: f64) -> Vec<String> {
     let map = format!("0:s:{}", index);
     push_args(
         &mut args,
-        &["-i", url, "-map", &map, "-c:s", "webvtt", "-flush_packets", "1", "-f", "webvtt", "pipe:1"],
+        &[
+            "-i",
+            url,
+            "-map",
+            &map,
+            "-c:s",
+            "webvtt",
+            "-flush_packets",
+            "1",
+            "-f",
+            "webvtt",
+            "pipe:1",
+        ],
     );
     args
 }
@@ -554,7 +730,14 @@ mod tests {
         args.iter().position(|a| a == item)
     }
 
-    fn job<'a>(input: &'a str, v: &'a str, a: &'a str, live: bool, encoder: &'a str, from_pipe: bool) -> FfmpegJob<'a> {
+    fn job<'a>(
+        input: &'a str,
+        v: &'a str,
+        a: &'a str,
+        live: bool,
+        encoder: &'a str,
+        from_pipe: bool,
+    ) -> FfmpegJob<'a> {
         let mut j = FfmpegJob::new(input, v, a, live, encoder);
         j.from_pipe = from_pipe;
         j
@@ -566,12 +749,22 @@ mod tests {
         let i = pos(&a, "-i").unwrap();
         assert_eq!(a[i + 1], "pipe:0");
         assert_eq!(a[i - 2..i], ["-f".to_string(), "mpegts".to_string()]);
-        assert!(pos(&a, "-user_agent").is_none(), "niente opzioni HTTP su stdin");
+        assert!(
+            pos(&a, "-user_agent").is_none(),
+            "niente opzioni HTTP su stdin"
+        );
         assert!(pos(&a, "-reconnect").is_none());
-        assert!(a.iter().any(|x| x.starts_with("bwdif=")), "deinterlacciamento atteso");
+        assert!(
+            a.iter().any(|x| x.starts_with("bwdif=")),
+            "deinterlacciamento atteso"
+        );
         assert!(pos(&a, "h264_nvenc").unwrap() > i);
         assert_eq!(a[pos(&a, "-c:a").unwrap() + 1], "aac");
-        assert_eq!(a[pos(&a, "-ac").unwrap() + 1], "2", "stereo per impostazione predefinita");
+        assert_eq!(
+            a[pos(&a, "-ac").unwrap() + 1],
+            "2",
+            "stereo per impostazione predefinita"
+        );
         assert_eq!(a.last().unwrap(), "pipe:1");
     }
 
@@ -579,14 +772,24 @@ mod tests {
     fn live_audio_only_from_pipe_copies_video() {
         let a = build_ffmpeg_args(&job("pipe:0", "copy", "aac", true, "h264_nvenc", true));
         assert_eq!(a[pos(&a, "-c:v").unwrap() + 1], "copy");
-        assert!(!a.iter().any(|x| x.starts_with("bwdif=")), "niente filtri con il video copiato");
+        assert!(
+            !a.iter().any(|x| x.starts_with("bwdif=")),
+            "niente filtri con il video copiato"
+        );
         assert!(pos(&a, "h264_nvenc").is_none());
         assert!(pos(&a, "-user_agent").is_none());
     }
 
     #[test]
     fn live_audio_only_from_url() {
-        let a = build_ffmpeg_args(&job("http://h/live/1.ts", "copy", "aac", true, "libx264", false));
+        let a = build_ffmpeg_args(&job(
+            "http://h/live/1.ts",
+            "copy",
+            "aac",
+            true,
+            "libx264",
+            false,
+        ));
         assert!(pos(&a, "-user_agent").unwrap() < pos(&a, "-i").unwrap());
         assert!(pos(&a, "-reconnect_streamed").is_some());
         assert_eq!(a[pos(&a, "-c:v").unwrap() + 1], "copy");
@@ -595,7 +798,14 @@ mod tests {
 
     #[test]
     fn vod_seek_goes_before_input() {
-        let mut j = job("http://h/movie/1.mkv", "copy", "copy", false, "libx264", false);
+        let mut j = job(
+            "http://h/movie/1.mkv",
+            "copy",
+            "copy",
+            false,
+            "libx264",
+            false,
+        );
         j.ss = 120.5;
         let a = build_ffmpeg_args(&j);
         let ss = pos(&a, "-ss").expect("-ss atteso");
@@ -604,19 +814,29 @@ mod tests {
         assert!(pos(&a, "-reconnect_streamed").is_none());
         assert_eq!(a[pos(&a, "-c:a").unwrap() + 1], "copy");
         j.ss = 0.2;
-        assert!(pos(&build_ffmpeg_args(&j), "-ss").is_none(), "seek trascurabile ignorato");
+        assert!(
+            pos(&build_ffmpeg_args(&j), "-ss").is_none(),
+            "seek trascurabile ignorato"
+        );
     }
 
     #[test]
     fn chosen_audio_track_is_mapped() {
         let a = build_ffmpeg_args(&job("pipe:0", "copy", "aac", true, "libx264", true));
-        assert!(a.windows(2).any(|w| w[0] == "-map" && w[1] == "0:a:0?"), "prima traccia predefinita");
+        assert!(
+            a.windows(2).any(|w| w[0] == "-map" && w[1] == "0:a:0?"),
+            "prima traccia predefinita"
+        );
         let mut j = job("pipe:0", "copy", "copy", true, "libx264", true);
         j.audio_index = 2;
         let a = build_ffmpeg_args(&j);
         assert!(a.windows(2).any(|w| w[0] == "-map" && w[1] == "0:a:2?"));
         assert!(a.windows(2).any(|w| w[0] == "-map" && w[1] == "0:v:0?"));
-        assert_eq!(a.iter().filter(|x| *x == "-map").count(), 2, "una sola traccia audio");
+        assert_eq!(
+            a.iter().filter(|x| *x == "-map").count(),
+            2,
+            "una sola traccia audio"
+        );
         assert_eq!(a[pos(&a, "-c:a").unwrap() + 1], "copy");
     }
 
@@ -625,12 +845,18 @@ mod tests {
         let after = |a: &[String], k: &str| a[a.iter().position(|x| x == k).unwrap() + 1].clone();
         // "Originale" con sorgente 5.1 nota (film)
         let a = audio_args("aac", true, 6);
-        assert_eq!((after(&a, "-ac"), after(&a, "-b:a")), ("6".to_string(), "384k".to_string()));
+        assert_eq!(
+            (after(&a, "-ac"), after(&a, "-b:a")),
+            ("6".to_string(), "384k".to_string())
+        );
         // 7.1 → 5.1
         assert_eq!(after(&audio_args("aac", true, 8), "-ac"), "6");
         // "Originale" con sorgente stereo: resta stereo
         let a = audio_args("aac", true, 2);
-        assert_eq!((after(&a, "-ac"), after(&a, "-b:a")), ("2".to_string(), "192k".to_string()));
+        assert_eq!(
+            (after(&a, "-ac"), after(&a, "-b:a")),
+            ("2".to_string(), "192k".to_string())
+        );
         // "Originale" senza canali noti (live): 5.1 o stereo secondo la sorgente
         let a = audio_args("aac", true, 0);
         assert!(!a.contains(&"-ac".to_string()));
@@ -639,9 +865,19 @@ mod tests {
         // "Stereo": sempre downmix
         assert_eq!(after(&audio_args("aac", false, 6), "-ac"), "2");
         // la copia non tocca i canali
-        assert_eq!(audio_args("copy", true, 6), vec!["-c:a".to_string(), "copy".to_string()]);
+        assert_eq!(
+            audio_args("copy", true, 6),
+            vec!["-c:a".to_string(), "copy".to_string()]
+        );
         // nel comando completo, dopo l'ingresso
-        let mut j = job("http://h/movie/1.mkv", "copy", "aac", false, "libx264", false);
+        let mut j = job(
+            "http://h/movie/1.mkv",
+            "copy",
+            "aac",
+            false,
+            "libx264",
+            false,
+        );
         j.surround = true;
         j.source_channels = 6;
         let full = build_ffmpeg_args(&j);
@@ -651,7 +887,9 @@ mod tests {
 
     #[test]
     fn quality_presets() {
-        let after = |args: &[&str], k: &str| args[args.iter().position(|x| *x == k).unwrap() + 1].to_string();
+        let after = |args: &[&str], k: &str| {
+            args[args.iter().position(|x| *x == k).unwrap() + 1].to_string()
+        };
         let nv = |q| {
             let a = encoder_args("h264_nvenc", q);
             (after(&a, "-preset"), after(&a, "-tune"), after(&a, "-cq"))
@@ -660,17 +898,44 @@ mod tests {
         assert_eq!(nv(Quality::Fast), t("p1", "ull", "25"));
         assert_eq!(nv(Quality::Balanced), t("p3", "ll", "22"));
         assert_eq!(nv(Quality::High), t("p5", "ll", "20"));
-        assert_eq!(after(&encoder_args("h264_qsv", Quality::Fast), "-global_quality"), "25");
-        assert_eq!(after(&encoder_args("h264_qsv", Quality::High), "-global_quality"), "20");
-        assert_eq!(after(&encoder_args("h264_amf", Quality::Fast), "-quality"), "speed");
-        assert_eq!(after(&encoder_args("h264_amf", Quality::High), "-quality"), "quality");
+        assert_eq!(
+            after(&encoder_args("h264_qsv", Quality::Fast), "-global_quality"),
+            "25"
+        );
+        assert_eq!(
+            after(&encoder_args("h264_qsv", Quality::High), "-global_quality"),
+            "20"
+        );
+        assert_eq!(
+            after(&encoder_args("h264_amf", Quality::Fast), "-quality"),
+            "speed"
+        );
+        assert_eq!(
+            after(&encoder_args("h264_amf", Quality::High), "-quality"),
+            "quality"
+        );
         assert_eq!(after(&encoder_args("libx264", Quality::Fast), "-crf"), "25");
-        assert_eq!(after(&encoder_args("libx264", Quality::Balanced), "-crf"), "22");
+        assert_eq!(
+            after(&encoder_args("libx264", Quality::Balanced), "-crf"),
+            "22"
+        );
         assert_eq!(after(&encoder_args("libx264", Quality::High), "-crf"), "20");
-        assert_eq!(after(&encoder_args("h264_mf", Quality::Fast), "-quality"), "50");
-        assert_eq!(after(&encoder_args("h264_mf", Quality::Balanced), "-quality"), "60");
-        assert_eq!(after(&encoder_args("h264_mf", Quality::High), "-quality"), "70");
-        assert_eq!(after(&encoder_args("h264_mf", Quality::High), "-rate_control"), "quality");
+        assert_eq!(
+            after(&encoder_args("h264_mf", Quality::Fast), "-quality"),
+            "50"
+        );
+        assert_eq!(
+            after(&encoder_args("h264_mf", Quality::Balanced), "-quality"),
+            "60"
+        );
+        assert_eq!(
+            after(&encoder_args("h264_mf", Quality::High), "-quality"),
+            "70"
+        );
+        assert_eq!(
+            after(&encoder_args("h264_mf", Quality::High), "-rate_control"),
+            "quality"
+        );
         assert_eq!(Quality::parse("fast"), Quality::Fast);
         assert_eq!(Quality::parse("high"), Quality::High);
         assert_eq!(Quality::parse(""), Quality::Balanced);
@@ -684,13 +949,28 @@ mod tests {
 
     #[test]
     fn every_encoder_has_args() {
-        for enc in ["h264_nvenc", "h264_qsv", "h264_amf", "libx264", "h264_mf", "sconosciuto"] {
+        for enc in [
+            "h264_nvenc",
+            "h264_qsv",
+            "h264_amf",
+            "libx264",
+            "h264_mf",
+            "sconosciuto",
+        ] {
             for q in [Quality::Fast, Quality::Balanced, Quality::High] {
                 let args = encoder_args(enc, q);
                 assert_eq!(args[0], "-c:v");
-                assert!(args[1] == enc || (enc == "sconosciuto" && args[1] == "libx264"), "{} -> {}", enc, args[1]);
+                assert!(
+                    args[1] == enc || (enc == "sconosciuto" && args[1] == "libx264"),
+                    "{} -> {}",
+                    enc,
+                    args[1]
+                );
                 assert!(args.contains(&"-pix_fmt"));
-                assert!(args.contains(&"-g") && args.contains(&"-bf"), "GOP corto e niente B-frame");
+                assert!(
+                    args.contains(&"-g") && args.contains(&"-bf"),
+                    "GOP corto e niente B-frame"
+                );
             }
         }
     }
@@ -705,9 +985,19 @@ mod tests {
 
     #[test]
     fn subtitles_from_the_same_ffmpeg_process() {
-        let mut j = job("http://h/movie/1.mkv", "copy", "copy", false, "libx264", false);
+        let mut j = job(
+            "http://h/movie/1.mkv",
+            "copy",
+            "copy",
+            false,
+            "libx264",
+            false,
+        );
         j.ss = 600.0;
-        j.subtitle_outputs = vec![(0, "tcp://127.0.0.1:5001".into()), (2, "tcp://127.0.0.1:5002".into())];
+        j.subtitle_outputs = vec![
+            (0, "tcp://127.0.0.1:5001".into()),
+            (2, "tcp://127.0.0.1:5002".into()),
+        ];
         let a = build_ffmpeg_args(&j);
         let ts_out = pos(&a, "pipe:1").expect("uscita video");
         // il video resta la prima uscita, senza sottotitoli
@@ -716,8 +1006,24 @@ mod tests {
         assert_eq!(
             tail,
             [
-                "-map", "0:s:0", "-c:s", "webvtt", "-flush_packets", "1", "-f", "webvtt", "tcp://127.0.0.1:5001", "-map",
-                "0:s:2", "-c:s", "webvtt", "-flush_packets", "1", "-f", "webvtt", "tcp://127.0.0.1:5002",
+                "-map",
+                "0:s:0",
+                "-c:s",
+                "webvtt",
+                "-flush_packets",
+                "1",
+                "-f",
+                "webvtt",
+                "tcp://127.0.0.1:5001",
+                "-map",
+                "0:s:2",
+                "-c:s",
+                "webvtt",
+                "-flush_packets",
+                "1",
+                "-f",
+                "webvtt",
+                "tcp://127.0.0.1:5002",
             ]
             .map(String::from)
         );
@@ -725,7 +1031,12 @@ mod tests {
         assert_eq!(a.iter().filter(|x| *x == "-ss").count(), 1);
         assert!(pos(&a, "-ss").unwrap() < pos(&a, "-i").unwrap());
         // senza sottotitoli l'ultima uscita è il video
-        assert_eq!(build_ffmpeg_args(&job("pipe:0", "copy", "aac", true, "libx264", true)).last().unwrap(), "pipe:1");
+        assert_eq!(
+            build_ffmpeg_args(&job("pipe:0", "copy", "aac", true, "libx264", true))
+                .last()
+                .unwrap(),
+            "pipe:1"
+        );
     }
 
     #[test]
@@ -764,9 +1075,17 @@ mod tests {
         let p = parse_probe(&v);
         assert_eq!(p.container, "matroska,webm");
         assert!((p.duration - 5400.5).abs() < 1e-9);
-        assert_eq!((p.video_codec.as_str(), p.width, p.video_tracks), ("hevc", 3840, 1), "copertina esclusa");
+        assert_eq!(
+            (p.video_codec.as_str(), p.width, p.video_tracks),
+            ("hevc", 3840, 1),
+            "copertina esclusa"
+        );
         assert_eq!(p.audio_tracks, 2);
-        assert_eq!((p.audio_codec.as_str(), p.audio_channels), ("eac3", 6), "riepilogo della prima traccia");
+        assert_eq!(
+            (p.audio_codec.as_str(), p.audio_channels),
+            ("eac3", 6),
+            "riepilogo della prima traccia"
+        );
         assert_eq!(
             p.audio[0],
             ProbeTrack {
@@ -780,11 +1099,28 @@ mod tests {
                 text: false,
             }
         );
-        assert_eq!((p.audio[1].index, p.audio[1].lang.as_str(), p.audio[1].channels), (1, "eng", 2));
+        assert_eq!(
+            (
+                p.audio[1].index,
+                p.audio[1].lang.as_str(),
+                p.audio[1].channels
+            ),
+            (1, "eng", 2)
+        );
         assert_eq!(p.subtitles.len(), 2);
         assert!(p.subtitles[0].text && p.subtitles[0].forced);
-        assert_eq!((p.subtitles[1].index, p.subtitles[1].text, p.subtitles[1].title.as_str()), (1, false, "SDH"), "PGS è un'immagine");
-        assert!(is_text_subtitle("ass") && is_text_subtitle("mov_text") && is_text_subtitle("webvtt"));
+        assert_eq!(
+            (
+                p.subtitles[1].index,
+                p.subtitles[1].text,
+                p.subtitles[1].title.as_str()
+            ),
+            (1, false, "SDH"),
+            "PGS è un'immagine"
+        );
+        assert!(
+            is_text_subtitle("ass") && is_text_subtitle("mov_text") && is_text_subtitle("webvtt")
+        );
         assert!(!is_text_subtitle("dvb_subtitle") && !is_text_subtitle("dvd_subtitle"));
     }
 }

@@ -14,7 +14,9 @@ use tauri::{AppHandle, State};
 
 use crate::cache::{load_list, CacheKey, Listing};
 use crate::state::AppState;
-use crate::xtream::{api_get, field, flex_f64, flex_string, normalize_server, parse_list, value_to_string};
+use crate::xtream::{
+    api_get, field, flex_f64, flex_string, normalize_server, parse_list, value_to_string,
+};
 
 /// Le risposte di guida, serie e film restano valide 10 minuti in memoria.
 const MEMO_SECS: u64 = 600;
@@ -50,7 +52,11 @@ async fn api_memo(
         "{}|{}|{}",
         server,
         username.trim(),
-        extra.iter().map(|(k, v)| format!("{}={}", k, v)).collect::<Vec<_>>().join("&")
+        extra
+            .iter()
+            .map(|(k, v)| format!("{}={}", k, v))
+            .collect::<Vec<_>>()
+            .join("&")
     );
     if let Some(v) = memo_get(&key) {
         return Ok(v);
@@ -66,11 +72,16 @@ pub fn decode_b64_text(s: &str) -> String {
     if t.is_empty() {
         return String::new();
     }
-    let looks_b64 = t.len() % 4 == 0 && t.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'+' || b == b'/' || b == b'=');
+    let looks_b64 = t.len() % 4 == 0
+        && t.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'+' || b == b'/' || b == b'=');
     if looks_b64 {
         if let Ok(bytes) = STANDARD.decode(t) {
             if let Ok(text) = String::from_utf8(bytes) {
-                if !text.chars().any(|c| c.is_control() && c != '\n' && c != '\r' && c != '\t') {
+                if !text
+                    .chars()
+                    .any(|c| c.is_control() && c != '\n' && c != '\r' && c != '\t')
+                {
                     return text.trim().to_string();
                 }
             }
@@ -145,7 +156,11 @@ pub async fn get_short_epg(
         &server,
         &username,
         &password,
-        &[("action", "get_short_epg"), ("stream_id", stream_id.trim()), ("limit", &limit)],
+        &[
+            ("action", "get_short_epg"),
+            ("stream_id", stream_id.trim()),
+            ("limit", &limit),
+        ],
     )
     .await?;
     Ok(parse_epg(&v))
@@ -165,7 +180,10 @@ pub async fn get_epg_day(
         &server,
         &username,
         &password,
-        &[("action", "get_simple_data_table"), ("stream_id", stream_id.trim())],
+        &[
+            ("action", "get_simple_data_table"),
+            ("stream_id", stream_id.trim()),
+        ],
     )
     .await?;
     Ok(parse_epg(&v))
@@ -184,9 +202,19 @@ pub struct SeriesItem {
     pub num: String,
     #[serde(default, deserialize_with = "flex_string")]
     pub name: String,
-    #[serde(rename = "stream_id", alias = "series_id", default, deserialize_with = "flex_string")]
+    #[serde(
+        rename = "stream_id",
+        alias = "series_id",
+        default,
+        deserialize_with = "flex_string"
+    )]
     pub stream_id: String,
-    #[serde(rename = "stream_icon", alias = "cover", default, deserialize_with = "flex_string")]
+    #[serde(
+        rename = "stream_icon",
+        alias = "cover",
+        default,
+        deserialize_with = "flex_string"
+    )]
     pub stream_icon: String,
     #[serde(default, deserialize_with = "flex_string")]
     pub category_id: String,
@@ -196,7 +224,12 @@ pub struct SeriesItem {
     pub plot: String,
     #[serde(default, deserialize_with = "flex_string")]
     pub genre: String,
-    #[serde(rename = "release_date", alias = "releaseDate", default, deserialize_with = "flex_string")]
+    #[serde(
+        rename = "release_date",
+        alias = "releaseDate",
+        default,
+        deserialize_with = "flex_string"
+    )]
     pub release_date: String,
     #[serde(default, deserialize_with = "flex_string")]
     pub last_modified: String,
@@ -214,12 +247,26 @@ pub async fn get_series_list(
 ) -> Result<Listing<SeriesItem>, String> {
     let server = normalize_server(&server)?;
     let cat = category_id.trim().to_string();
-    let cat = if cat == "all" || cat == "*" { String::new() } else { cat };
-    let key = CacheKey { server: server.clone(), username: username.clone(), action: "get_series".into(), category: cat.clone() };
+    let cat = if cat == "all" || cat == "*" {
+        String::new()
+    } else {
+        cat
+    };
+    let key = CacheKey {
+        server: server.clone(),
+        username: username.clone(),
+        action: "get_series".into(),
+        category: cat.clone(),
+    };
     let client = state.client.clone();
     load_list(app, key, cache.as_deref().unwrap_or("prefer"), move || {
-        let (client, server, username, password, cat) =
-            (client.clone(), server.clone(), username.clone(), password.clone(), cat.clone());
+        let (client, server, username, password, cat) = (
+            client.clone(),
+            server.clone(),
+            username.clone(),
+            password.clone(),
+            cat.clone(),
+        );
         async move {
             let mut extra: Vec<(&str, &str)> = vec![("action", "get_series")];
             if !cat.is_empty() {
@@ -269,10 +316,18 @@ fn parse_codecs(info: &Value) -> Codecs {
 
 fn first_image(v: &Value) -> String {
     match v {
-        Value::Array(a) => a.iter().map(value_to_string).find(|s| s.starts_with("http")).unwrap_or_default(),
+        Value::Array(a) => a
+            .iter()
+            .map(value_to_string)
+            .find(|s| s.starts_with("http"))
+            .unwrap_or_default(),
         other => {
             let s = value_to_string(other);
-            if s.starts_with("http") { s } else { String::new() }
+            if s.starts_with("http") {
+                s
+            } else {
+                String::new()
+            }
         }
     }
 }
@@ -293,26 +348,49 @@ pub struct MediaMeta {
 }
 
 fn parse_meta(info: &Value) -> MediaMeta {
-    let image = [field(info, "movie_image"), field(info, "cover_big"), field(info, "cover")]
-        .into_iter()
-        .find(|s| s.starts_with("http"))
-        .unwrap_or_default();
-    let release = [field(info, "release_date"), field(info, "releaseDate"), field(info, "releasedate")]
-        .into_iter()
-        .find(|s| !s.is_empty())
-        .unwrap_or_default();
-    let rating = info.get("rating").map(value_to_string).unwrap_or_default().replace(',', ".").parse::<f64>().unwrap_or(0.0);
+    let image = [
+        field(info, "movie_image"),
+        field(info, "cover_big"),
+        field(info, "cover"),
+    ]
+    .into_iter()
+    .find(|s| s.starts_with("http"))
+    .unwrap_or_default();
+    let release = [
+        field(info, "release_date"),
+        field(info, "releaseDate"),
+        field(info, "releasedate"),
+    ]
+    .into_iter()
+    .find(|s| !s.is_empty())
+    .unwrap_or_default();
+    let rating = info
+        .get("rating")
+        .map(value_to_string)
+        .unwrap_or_default()
+        .replace(',', ".")
+        .parse::<f64>()
+        .unwrap_or(0.0);
     MediaMeta {
         name: field(info, "name"),
-        plot: [field(info, "plot"), field(info, "description")].into_iter().find(|s| !s.is_empty()).unwrap_or_default(),
-        cast: [field(info, "cast"), field(info, "actors")].into_iter().find(|s| !s.is_empty()).unwrap_or_default(),
+        plot: [field(info, "plot"), field(info, "description")]
+            .into_iter()
+            .find(|s| !s.is_empty())
+            .unwrap_or_default(),
+        cast: [field(info, "cast"), field(info, "actors")]
+            .into_iter()
+            .find(|s| !s.is_empty())
+            .unwrap_or_default(),
         director: field(info, "director"),
         genre: field(info, "genre"),
         release_date: release,
         rating,
         duration_secs: field(info, "duration_secs").parse().unwrap_or(0),
         image,
-        backdrop: info.get("backdrop_path").map(first_image).unwrap_or_default(),
+        backdrop: info
+            .get("backdrop_path")
+            .map(first_image)
+            .unwrap_or_default(),
         trailer: field(info, "youtube_trailer"),
     }
 }
@@ -360,7 +438,10 @@ pub fn parse_series_info(v: &Value) -> SeriesInfo {
                     name: field(s, "name"),
                     episode_count: field(s, "episode_count").parse().unwrap_or(0),
                     air_date: field(s, "air_date"),
-                    cover: [field(s, "cover_big"), field(s, "cover")].into_iter().find(|c| c.starts_with("http")).unwrap_or_default(),
+                    cover: [field(s, "cover_big"), field(s, "cover")]
+                        .into_iter()
+                        .find(|c| c.starts_with("http"))
+                        .unwrap_or_default(),
                 })
                 .collect()
         })
@@ -390,11 +471,26 @@ pub fn parse_series_info(v: &Value) -> SeriesInfo {
                 season: field(e, "season").parse().unwrap_or(0),
                 episode_num: field(e, "episode_num").parse().unwrap_or(0),
                 title: field(e, "title"),
-                container_extension: field(e, "container_extension").trim_start_matches('.').to_ascii_lowercase(),
-                plot: [field(&einfo, "plot"), field(&einfo, "overview")].into_iter().find(|s| !s.is_empty()).unwrap_or_default(),
-                image: [field(&einfo, "movie_image"), field(&einfo, "cover_big")].into_iter().find(|s| s.starts_with("http")).unwrap_or_default(),
+                container_extension: field(e, "container_extension")
+                    .trim_start_matches('.')
+                    .to_ascii_lowercase(),
+                plot: [field(&einfo, "plot"), field(&einfo, "overview")]
+                    .into_iter()
+                    .find(|s| !s.is_empty())
+                    .unwrap_or_default(),
+                image: [field(&einfo, "movie_image"), field(&einfo, "cover_big")]
+                    .into_iter()
+                    .find(|s| s.starts_with("http"))
+                    .unwrap_or_default(),
                 duration_secs: field(&einfo, "duration_secs").parse().unwrap_or(0),
-                release_date: [field(&einfo, "release_date"), field(&einfo, "releasedate"), field(&einfo, "air_date")].into_iter().find(|s| !s.is_empty()).unwrap_or_default(),
+                release_date: [
+                    field(&einfo, "release_date"),
+                    field(&einfo, "releasedate"),
+                    field(&einfo, "air_date"),
+                ]
+                .into_iter()
+                .find(|s| !s.is_empty())
+                .unwrap_or_default(),
                 codecs: parse_codecs(&einfo),
             });
         }
@@ -403,15 +499,26 @@ pub fn parse_series_info(v: &Value) -> SeriesInfo {
     // stagioni mancanti o senza episodi dichiarati: si ricavano dagli episodi
     for e in &episodes {
         if !seasons.iter().any(|s| s.season_number == e.season) {
-            seasons.push(Season { season_number: e.season, name: format!("Stagione {}", e.season), ..Default::default() });
+            seasons.push(Season {
+                season_number: e.season,
+                name: format!("Stagione {}", e.season),
+                ..Default::default()
+            });
         }
     }
     seasons.retain(|s| episodes.iter().any(|e| e.season == s.season_number));
     seasons.sort_by_key(|s| s.season_number);
     for s in seasons.iter_mut() {
-        s.episode_count = episodes.iter().filter(|e| e.season == s.season_number).count() as i64;
+        s.episode_count = episodes
+            .iter()
+            .filter(|e| e.season == s.season_number)
+            .count() as i64;
     }
-    SeriesInfo { meta: parse_meta(&info), seasons, episodes }
+    SeriesInfo {
+        meta: parse_meta(&info),
+        seasons,
+        episodes,
+    }
 }
 
 #[tauri::command]
@@ -427,7 +534,10 @@ pub async fn get_series_info(
         &server,
         &username,
         &password,
-        &[("action", "get_series_info"), ("series_id", series_id.trim())],
+        &[
+            ("action", "get_series_info"),
+            ("series_id", series_id.trim()),
+        ],
     )
     .await?;
     Ok(parse_series_info(&v))
@@ -447,9 +557,15 @@ pub fn parse_vod_info(v: &Value) -> VodInfo {
     let info = v.get("info").cloned().unwrap_or(Value::Null);
     let mut meta = parse_meta(&info);
     if meta.name.is_empty() {
-        meta.name = v.get("movie_data").map(|m| field(m, "name")).unwrap_or_default();
+        meta.name = v
+            .get("movie_data")
+            .map(|m| field(m, "name"))
+            .unwrap_or_default();
     }
-    VodInfo { meta, codecs: parse_codecs(&info) }
+    VodInfo {
+        meta,
+        codecs: parse_codecs(&info),
+    }
 }
 
 #[tauri::command]
@@ -480,9 +596,21 @@ mod tests {
     fn base64_titles_are_decoded_and_plain_text_kept() {
         assert_eq!(decode_b64_text("TW9ybmluZyBMaXZl"), "Morning Live");
         assert_eq!(decode_b64_text("Q2l0dMOg"), "Città");
-        assert_eq!(decode_b64_text("Tg1 Notte"), "Tg1 Notte", "testo in chiaro con spazi");
-        assert_eq!(decode_b64_text("Telegiornale"), "Telegiornale", "base64 valido ma non UTF-8");
-        assert_eq!(decode_b64_text("News"), "News", "parola valida in base64 ma decodifica non testuale");
+        assert_eq!(
+            decode_b64_text("Tg1 Notte"),
+            "Tg1 Notte",
+            "testo in chiaro con spazi"
+        );
+        assert_eq!(
+            decode_b64_text("Telegiornale"),
+            "Telegiornale",
+            "base64 valido ma non UTF-8"
+        );
+        assert_eq!(
+            decode_b64_text("News"),
+            "News",
+            "parola valida in base64 ma decodifica non testuale"
+        );
         assert_eq!(decode_b64_text("  "), "");
     }
 
@@ -541,8 +669,17 @@ mod tests {
         assert_eq!(s.meta.backdrop, "http://img/b.jpg");
         let ids: Vec<&str> = s.episodes.iter().map(|e| e.id.as_str()).collect();
         assert_eq!(ids, ["11", "12", "21"]);
-        assert_eq!(s.seasons.iter().map(|x| x.season_number).collect::<Vec<_>>(), [1, 2]);
-        assert_eq!(s.seasons[0].episode_count, 2, "conteggio reale, non quello dichiarato");
+        assert_eq!(
+            s.seasons
+                .iter()
+                .map(|x| x.season_number)
+                .collect::<Vec<_>>(),
+            [1, 2]
+        );
+        assert_eq!(
+            s.seasons[0].episode_count, 2,
+            "conteggio reale, non quello dichiarato"
+        );
         assert_eq!(s.seasons[0].cover, "", "immagine non valida scartata");
         let e = &s.episodes[2];
         assert_eq!(e.container_extension, "mkv");
@@ -551,7 +688,8 @@ mod tests {
         assert_eq!(e.codecs.audio_codec, "eac3");
         assert_eq!(e.codecs.audio_channels, 6);
         // variante con array di array
-        let alt = parse_series_info(&json!({"episodes": [[{"id": "5", "season": 3, "episode_num": 1}]]}));
+        let alt =
+            parse_series_info(&json!({"episodes": [[{"id": "5", "season": 3, "episode_num": 1}]]}));
         assert_eq!(alt.episodes.len(), 1);
         assert_eq!(alt.seasons[0].season_number, 3);
     }
@@ -583,26 +721,53 @@ mod tests {
     #[ignore = "richiede risposte reali salvate nella cartella XP_SAMPLES"]
     fn real_samples() {
         let dir = std::env::var("XP_SAMPLES").expect("imposta XP_SAMPLES");
-        let read = |n: &str| -> Value { serde_json::from_str(&std::fs::read_to_string(format!("{}/{}", dir, n)).unwrap()).unwrap() };
+        let read = |n: &str| -> Value {
+            serde_json::from_str(&std::fs::read_to_string(format!("{}/{}", dir, n)).unwrap())
+                .unwrap()
+        };
         let epg = parse_epg(&read("epg_day.json"));
-        println!("guida: {} programmi, primo {:?}", epg.len(), epg.first().map(|e| (&e.title, &e.start)));
+        println!(
+            "guida: {} programmi, primo {:?}",
+            epg.len(),
+            epg.first().map(|e| (&e.title, &e.start))
+        );
         assert!(!epg.is_empty());
-        assert!(epg.iter().all(|e| !e.title.contains('=') || e.title.contains(' ')), "titoli decodificati");
+        assert!(
+            epg.iter()
+                .all(|e| !e.title.contains('=') || e.title.contains(' ')),
+            "titoli decodificati"
+        );
         let short = parse_epg(&read("epg_short.json"));
-        println!("in onda/dopo: {:?}", short.iter().map(|e| &e.title).collect::<Vec<_>>());
+        println!(
+            "in onda/dopo: {:?}",
+            short.iter().map(|e| &e.title).collect::<Vec<_>>()
+        );
         let list: Vec<SeriesItem> = parse_list(read("series_list.json"));
-        println!("serie: {}, prima {:?}", list.len(), list.first().map(|s| (&s.stream_id, &s.name, &s.genre)));
+        println!(
+            "serie: {}, prima {:?}",
+            list.len(),
+            list.first().map(|s| (&s.stream_id, &s.name, &s.genre))
+        );
         assert!(!list.is_empty() && list.iter().all(|s| !s.stream_id.is_empty()));
         let info = parse_series_info(&read("series_info.json"));
         println!(
             "serie: {} stagioni, {} episodi, primo {:?}",
             info.seasons.len(),
             info.episodes.len(),
-            info.episodes.first().map(|e| (&e.id, &e.title, &e.container_extension, &e.codecs.video_codec, &e.codecs.audio_codec))
+            info.episodes.first().map(|e| (
+                &e.id,
+                &e.title,
+                &e.container_extension,
+                &e.codecs.video_codec,
+                &e.codecs.audio_codec
+            ))
         );
         assert!(!info.episodes.is_empty());
         let vod = parse_vod_info(&read("vod_info.json"));
-        println!("film: {:?} {}s codec {:?}/{:?}", vod.meta.name, vod.meta.duration_secs, vod.codecs.video_codec, vod.codecs.audio_codec);
+        println!(
+            "film: {:?} {}s codec {:?}/{:?}",
+            vod.meta.name, vod.meta.duration_secs, vod.codecs.video_codec, vod.codecs.audio_codec
+        );
         assert!(!vod.meta.name.is_empty());
     }
 }

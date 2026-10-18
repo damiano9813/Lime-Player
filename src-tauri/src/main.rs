@@ -25,8 +25,8 @@ use xtream::build_client;
 
 fn main() {
     let client = build_client();
-    let std_listener = std::net::TcpListener::bind(("127.0.0.1", 0))
-        .expect("impossibile avviare il proxy locale");
+    let std_listener =
+        std::net::TcpListener::bind(("127.0.0.1", 0)).expect("impossibile avviare il proxy locale");
     std_listener
         .set_nonblocking(true)
         .expect("impossibile configurare il proxy locale");

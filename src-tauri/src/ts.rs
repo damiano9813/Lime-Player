@@ -167,7 +167,9 @@ impl BurstSkipper {
                     None => break,
                 }
             }
-            if let Some((pid, pcr)) = ts_packet_pcr(&self.pending[self.parsed..self.parsed + TS_PACKET]) {
+            if let Some((pid, pcr)) =
+                ts_packet_pcr(&self.pending[self.parsed..self.parsed + TS_PACKET])
+            {
                 if self.pcr_pid.is_none() {
                     self.pcr_pid = Some(pid);
                 }
@@ -254,7 +256,11 @@ pub fn crc32_mpeg(data: &[u8]) -> u32 {
     for &b in data {
         crc ^= (b as u32) << 24;
         for _ in 0..8 {
-            crc = if crc & 0x8000_0000 != 0 { (crc << 1) ^ 0x04c1_1db7 } else { crc << 1 };
+            crc = if crc & 0x8000_0000 != 0 {
+                (crc << 1) ^ 0x04c1_1db7
+            } else {
+                crc << 1
+            };
         }
     }
     crc
@@ -279,7 +285,11 @@ fn ts_payload(p: &[u8]) -> Option<(u16, bool, &[u8])> {
 }
 
 /// Codec e tipo di traccia dai dati della PMT, con le stesse regole del demuxer di ffmpeg.
-fn classify_stream(stream_type: u8, descriptors: &[u8], hdmv: bool) -> Option<(&'static str, &'static str, bool)> {
+fn classify_stream(
+    stream_type: u8,
+    descriptors: &[u8],
+    hdmv: bool,
+) -> Option<(&'static str, &'static str, bool)> {
     let mut registration = [0u8; 4];
     let mut has = |tag: u8| -> bool {
         let mut i = 0;
@@ -345,7 +355,8 @@ fn descriptor_lang(descriptors: &[u8]) -> String {
     let mut i = 0;
     while i + 2 <= descriptors.len() {
         let (tag, len) = (descriptors[i], descriptors[i + 1] as usize);
-        let body = &descriptors[(i + 2).min(descriptors.len())..(i + 2 + len).min(descriptors.len())];
+        let body =
+            &descriptors[(i + 2).min(descriptors.len())..(i + 2 + len).min(descriptors.len())];
         if len >= 3 && body.len() >= 3 && matches!(tag, 0x0a | 0x56 | 0x59) {
             let code: String = body[..3]
                 .iter()
@@ -379,7 +390,9 @@ pub fn parse_pmt(sec: &[u8]) -> Option<(u8, Vec<TsTrack>)> {
     let pil = (((sec[10] & 0x0f) as usize) << 8) | sec[11] as usize;
     let program_desc = sec.get(12..12 + pil)?;
     // registrazione "HDMV" (Blu-ray): cambia il significato dei tipi 0x80-0x86
-    let hdmv = program_desc.windows(6).any(|w| w[0] == 0x05 && w[1] >= 4 && &w[2..6] == b"HDMV");
+    let hdmv = program_desc
+        .windows(6)
+        .any(|w| w[0] == 0x05 && w[1] >= 4 && &w[2..6] == b"HDMV");
     let mut tracks: Vec<TsTrack> = Vec::new();
     let mut i = 12 + pil;
     while i + 5 <= end - 4 {
@@ -434,7 +447,11 @@ pub struct PsiScanner {
 
 impl PsiScanner {
     pub fn new() -> Self {
-        PsiScanner { carry: Vec::new(), pmt_pid: None, sections: HashMap::new() }
+        PsiScanner {
+            carry: Vec::new(),
+            pmt_pid: None,
+            sections: HashMap::new(),
+        }
     }
 
     /// Restituisce le tracce alla prima PMT valida.
@@ -487,10 +504,8 @@ impl PsiScanner {
                 return Some(found);
             }
             self.sections.insert(pid, payload[1 + pointer..].to_vec());
-        } else if let Some(buf) = self.sections.get_mut(&pid) {
-            buf.extend_from_slice(payload);
         } else {
-            return None;
+            self.sections.get_mut(&pid)?.extend_from_slice(payload);
         }
         self.complete(pid)
     }
@@ -536,7 +551,11 @@ pub fn register_tracks(sid: &str, tracks: Vec<TsTrack>) {
     }
     // solo in sviluppo: i banchi di prova fuori dall'app non possono chiamare i comandi Tauri
     #[cfg(debug_assertions)]
-    println!("[dev] tracce {}: {}", sid, serde_json::to_string(&tracks).unwrap_or_default());
+    println!(
+        "[dev] tracce {}: {}",
+        sid,
+        serde_json::to_string(&tracks).unwrap_or_default()
+    );
     if let Ok(mut reg) = track_registry().lock() {
         // si tengono solo le sessioni recenti
         if reg.len() >= 64 {
@@ -544,14 +563,24 @@ pub fn register_tracks(sid: &str, tracks: Vec<TsTrack>) {
                 reg.remove(&oldest);
             }
         }
-        reg.insert(sid.to_string(), TrackEntry { at: Instant::now(), tracks });
+        reg.insert(
+            sid.to_string(),
+            TrackEntry {
+                at: Instant::now(),
+                tracks,
+            },
+        );
     }
 }
 
 /// Tracce lette dalla PMT per la sessione `sid`; `None` finché la PMT non è arrivata.
 #[tauri::command]
 pub fn get_stream_tracks(sid: String) -> Option<Vec<TsTrack>> {
-    track_registry().lock().ok()?.get(&sid).map(|e| e.tracks.clone())
+    track_registry()
+        .lock()
+        .ok()?
+        .get(&sid)
+        .map(|e| e.tracks.clone())
 }
 
 #[cfg(test)]
@@ -596,7 +625,8 @@ mod tests {
     }
 
     fn first_pcr(buf: &[u8]) -> Option<f64> {
-        buf.chunks(TS_PACKET).find_map(|p| ts_packet_pcr(p).map(|(_, pcr)| pcr))
+        buf.chunks(TS_PACKET)
+            .find_map(|p| ts_packet_pcr(p).map(|(_, pcr)| pcr))
     }
 
     #[test]
@@ -642,7 +672,12 @@ mod tests {
         assert_eq!(out.len() % TS_PACKET, 0, "uscita allineata ai pacchetti");
         let first = first_pcr(&out).expect("PCR nell'uscita");
         let last = t - 0.1;
-        assert!(last - first <= BURST_KEEP_SECS + 0.11, "inizio {} troppo vecchio (ultimo {})", first, last);
+        assert!(
+            last - first <= BURST_KEEP_SECS + 0.11,
+            "inizio {} troppo vecchio (ultimo {})",
+            first,
+            last
+        );
         assert!(first > 20.0, "deve saltare la raffica, inizio {}", first);
     }
 
@@ -696,7 +731,16 @@ mod tests {
     /// Sezione PSI completa di CRC: `table_id`, id (programma/TS) e corpo dopo l'intestazione.
     fn section(table_id: u8, id: u16, body: &[u8]) -> Vec<u8> {
         let len = 5 + body.len() + 4;
-        let mut s = vec![table_id, 0xb0 | ((len >> 8) as u8 & 0x0f), len as u8, (id >> 8) as u8, id as u8, 0xc1, 0, 0];
+        let mut s = vec![
+            table_id,
+            0xb0 | ((len >> 8) as u8 & 0x0f),
+            len as u8,
+            (id >> 8) as u8,
+            id as u8,
+            0xc1,
+            0,
+            0,
+        ];
         s.extend_from_slice(body);
         let crc = crc32_mpeg(&s);
         s.extend_from_slice(&crc.to_be_bytes());
@@ -705,11 +749,30 @@ mod tests {
 
     fn pat(pmt_pid: u16) -> Vec<u8> {
         // programma 0 (NIT) prima del programma vero
-        section(0x00, 1, &[0, 0, 0xe0, 0x10, 0, 1, 0xe0 | (pmt_pid >> 8) as u8, pmt_pid as u8])
+        section(
+            0x00,
+            1,
+            &[
+                0,
+                0,
+                0xe0,
+                0x10,
+                0,
+                1,
+                0xe0 | (pmt_pid >> 8) as u8,
+                pmt_pid as u8,
+            ],
+        )
     }
 
     fn es(stream_type: u8, pid: u16, desc: &[u8]) -> Vec<u8> {
-        let mut v = vec![stream_type, 0xe0 | (pid >> 8) as u8, pid as u8, 0xf0 | (desc.len() >> 8) as u8, desc.len() as u8];
+        let mut v = vec![
+            stream_type,
+            0xe0 | (pid >> 8) as u8,
+            pid as u8,
+            0xf0 | (desc.len() >> 8) as u8,
+            desc.len() as u8,
+        ];
         v.extend_from_slice(desc);
         v
     }
@@ -735,7 +798,12 @@ mod tests {
         let mut data = vec![0u8];
         data.extend_from_slice(sec);
         for (i, part) in data.chunks(TS_PACKET - 4).enumerate() {
-            let mut p = vec![0x47, ((pid >> 8) as u8 & 0x1f) | if i == 0 { 0x40 } else { 0 }, pid as u8, 0x10 | (i as u8 & 0x0f)];
+            let mut p = vec![
+                0x47,
+                ((pid >> 8) as u8 & 0x1f) | if i == 0 { 0x40 } else { 0 },
+                pid as u8,
+                0x10 | (i as u8 & 0x0f),
+            ];
             p.extend_from_slice(part);
             p.resize(TS_PACKET, 0xff);
             out.extend(p);
@@ -774,8 +842,19 @@ mod tests {
 
     fn check_multilang(tracks: &[TsTrack]) {
         let audio: Vec<_> = tracks.iter().filter(|t| t.kind == "audio").collect();
-        let summary: Vec<(usize, &str, &str)> = audio.iter().map(|t| (t.index, t.codec.as_str(), t.lang.as_str())).collect();
-        assert_eq!(summary, vec![(0, "mp2", "ita"), (1, "ac3", "eng"), (2, "aac", ""), (3, "eac3", "spa")]);
+        let summary: Vec<(usize, &str, &str)> = audio
+            .iter()
+            .map(|t| (t.index, t.codec.as_str(), t.lang.as_str()))
+            .collect();
+        assert_eq!(
+            summary,
+            vec![
+                (0, "mp2", "ita"),
+                (1, "ac3", "eng"),
+                (2, "aac", ""),
+                (3, "eac3", "spa")
+            ]
+        );
         assert_eq!(audio[1].pid, 0x102);
         let video: Vec<_> = tracks.iter().filter(|t| t.kind == "video").collect();
         assert_eq!((video.len(), video[0].codec.as_str()), (1, "h264"));
@@ -784,8 +863,17 @@ mod tests {
             .filter(|t| t.kind == "subtitle")
             .map(|t| (t.index, t.codec.as_str(), t.lang.as_str(), t.text))
             .collect();
-        assert_eq!(subs, vec![(0, "dvb_subtitle", "ita", false), (1, "dvb_teletext", "deu", false)]);
-        assert!(!tracks.iter().any(|t| t.pid == 0x106), "flusso dati escluso");
+        assert_eq!(
+            subs,
+            vec![
+                (0, "dvb_subtitle", "ita", false),
+                (1, "dvb_teletext", "deu", false)
+            ]
+        );
+        assert!(
+            !tracks.iter().any(|t| t.pid == 0x106),
+            "flusso dati escluso"
+        );
     }
 
     #[test]
@@ -793,7 +881,11 @@ mod tests {
         // valore di controllo del CRC-32/MPEG-2 per "123456789"
         assert_eq!(crc32_mpeg(b"123456789"), 0x0376_e6e7);
         let s = pat(0x1000);
-        assert_eq!(crc32_mpeg(&s), 0, "una sezione con il suo CRC dà resto zero");
+        assert_eq!(
+            crc32_mpeg(&s),
+            0,
+            "una sezione con il suo CRC dà resto zero"
+        );
     }
 
     #[test]
@@ -821,7 +913,10 @@ mod tests {
         }
         let tracks = found.expect("tracce attese");
         assert_eq!(tracks.len(), 30);
-        assert_eq!((tracks[29].index, tracks[29].lang.as_str(), tracks[29].pid), (29, "eng", 0x21d));
+        assert_eq!(
+            (tracks[29].index, tracks[29].lang.as_str(), tracks[29].pid),
+            (29, "eng", 0x21d)
+        );
     }
 
     #[test]
@@ -848,7 +943,11 @@ mod tests {
             d.extend_from_slice(id);
             d
         };
-        let sec = pmt(&[es(0x06, 0x101, &reg(b"EAC3")), es(0x06, 0x102, &reg(b"AC-3")), es(0x06, 0x103, &reg(b"ABCD"))]);
+        let sec = pmt(&[
+            es(0x06, 0x101, &reg(b"EAC3")),
+            es(0x06, 0x102, &reg(b"AC-3")),
+            es(0x06, 0x103, &reg(b"ABCD")),
+        ]);
         let (version, tracks) = parse_pmt(&sec).unwrap();
         assert_eq!(version, 0);
         let codecs: Vec<&str> = tracks.iter().map(|t| t.codec.as_str()).collect();
@@ -864,6 +963,9 @@ mod tests {
         check_multilang(&got);
         assert!(get_stream_tracks("sconosciuta".to_string()).is_none());
         register_tracks("", vec![]);
-        assert!(get_stream_tracks(String::new()).is_none(), "sid vuoto ignorato");
+        assert!(
+            get_stream_tracks(String::new()).is_none(),
+            "sid vuoto ignorato"
+        );
     }
 }

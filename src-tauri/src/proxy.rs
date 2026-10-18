@@ -113,7 +113,12 @@ pub fn header_str(headers: &HeaderMap, name: &HeaderName) -> String {
         .to_string()
 }
 
-pub async fn write_simple(sock: &mut TcpStream, code: u16, reason: &str, body: &str) -> io::Result<()> {
+pub async fn write_simple(
+    sock: &mut TcpStream,
+    code: u16,
+    reason: &str,
+    body: &str,
+) -> io::Result<()> {
     let resp = format!(
         "HTTP/1.1 {} {}\r\n{}Access-Control-Max-Age: 600\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
         code,
@@ -166,7 +171,13 @@ pub async fn handle_conn(mut sock: TcpStream, ctx: Arc<ProxyCtx>) -> io::Result<
         return write_simple(&mut sock, 204, "No Content", "").await;
     }
     if method != "GET" && method != "HEAD" {
-        return write_simple(&mut sock, 405, "Method Not Allowed", "Metodo non supportato").await;
+        return write_simple(
+            &mut sock,
+            405,
+            "Method Not Allowed",
+            "Metodo non supportato",
+        )
+        .await;
     }
 
     let parsed = match Url::parse(&format!("http://127.0.0.1{}", path)) {
@@ -185,10 +196,26 @@ pub async fn handle_conn(mut sock: TcpStream, ctx: Arc<ProxyCtx>) -> io::Result<
     };
     let target_url = match Url::parse(&target) {
         Ok(u) if matches!(u.scheme(), "http" | "https") => u,
-        _ => return write_simple(&mut sock, 400, "Bad Request", "URL di destinazione non valido").await,
+        _ => {
+            return write_simple(
+                &mut sock,
+                400,
+                "Bad Request",
+                "URL di destinazione non valido",
+            )
+            .await
+        }
     };
     if is_transcode {
-        return handle_transcode(sock, &method, target_url, &params, &ctx.client, range.as_deref()).await;
+        return handle_transcode(
+            sock,
+            &method,
+            target_url,
+            &params,
+            &ctx.client,
+            range.as_deref(),
+        )
+        .await;
     }
     // un film convertito in pausa tiene la connessione al provider: si libera per i nuovi stream
     if !(is_subtitles && params.contains_key("sid")) {
@@ -246,9 +273,12 @@ pub async fn handle_conn(mut sock: TcpStream, ctx: Arc<ProxyCtx>) -> io::Result<
         let text = match tokio::time::timeout(Duration::from_secs(20), resp.text()).await {
             Ok(Ok(t)) => t,
             Ok(Err(e)) => {
-                return write_simple(&mut sock, 502, "Bad Gateway", &describe_reqwest_error(e)).await
+                return write_simple(&mut sock, 502, "Bad Gateway", &describe_reqwest_error(e))
+                    .await
             }
-            Err(_) => return write_simple(&mut sock, 504, "Gateway Timeout", "Timeout playlist").await,
+            Err(_) => {
+                return write_simple(&mut sock, 504, "Gateway Timeout", "Timeout playlist").await
+            }
         };
         let rewritten = rewrite_playlist(&text, &final_url, ctx.port, &ctx.token);
         let ct = if content_type.is_empty() {
@@ -273,7 +303,14 @@ pub async fn handle_conn(mut sock: TcpStream, ctx: Arc<ProxyCtx>) -> io::Result<
         status.as_u16(),
         status.canonical_reason().unwrap_or("OK")
     );
-    for name in [CONTENT_TYPE, CONTENT_LENGTH, CONTENT_RANGE, ACCEPT_RANGES, LAST_MODIFIED, ETAG] {
+    for name in [
+        CONTENT_TYPE,
+        CONTENT_LENGTH,
+        CONTENT_RANGE,
+        ACCEPT_RANGES,
+        LAST_MODIFIED,
+        ETAG,
+    ] {
         let v = header_str(&headers, &name);
         if !v.is_empty() {
             head.push_str(&format!("{}: {}\r\n", name.as_str(), v));
@@ -345,7 +382,10 @@ mod tests {
         let key_line = lines[1];
         let start = key_line.find("URI=\"").unwrap() + 5;
         let end = start + key_line[start..].find('"').unwrap();
-        assert_eq!(target_of(&key_line[start..end]), "http://h:8080/live/a/b/key.bin");
+        assert_eq!(
+            target_of(&key_line[start..end]),
+            "http://h:8080/live/a/b/key.bin"
+        );
         assert_eq!(lines[2], "");
         assert_eq!(target_of(lines[3]), "http://h:8080/live/a/b/seg%201.ts");
         assert_eq!(target_of(lines[4]), "http://cdn.example/x.ts?t=1&s=2");
@@ -361,7 +401,10 @@ mod tests {
 
     #[test]
     fn find_subsequence_works() {
-        assert_eq!(find_subsequence(b"GET / HTTP/1.1\r\nA: b\r\n\r\nrest", b"\r\n\r\n"), Some(20));
+        assert_eq!(
+            find_subsequence(b"GET / HTTP/1.1\r\nA: b\r\n\r\nrest", b"\r\n\r\n"),
+            Some(20)
+        );
         assert_eq!(find_subsequence(b"abc", b"\r\n\r\n"), None);
     }
 
@@ -371,15 +414,32 @@ mod tests {
     #[test]
     #[ignore = "banco di prova manuale: avvia il proxy per XP_BENCH_SECS secondi"]
     fn proxy_bench() {
-        let env = |k: &str, def: u64| std::env::var(k).ok().and_then(|v| v.parse().ok()).unwrap_or(def);
+        let env = |k: &str, def: u64| {
+            std::env::var(k)
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(def)
+        };
         let port = env("XP_BENCH_PORT", 17999) as u16;
-        let listener = std::net::TcpListener::bind(("127.0.0.1", port)).expect("porta del banco occupata");
+        let listener =
+            std::net::TcpListener::bind(("127.0.0.1", port)).expect("porta del banco occupata");
         listener.set_nonblocking(true).unwrap();
-        let ctx = Arc::new(ProxyCtx { client: crate::xtream::build_client(), port, token: "bench".into() });
-        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let ctx = Arc::new(ProxyCtx {
+            client: crate::xtream::build_client(),
+            port,
+            token: "bench".into(),
+        });
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
         println!("[bench] proxy http://127.0.0.1:{}/ token bench", port);
         rt.block_on(async {
-            let _ = tokio::time::timeout(Duration::from_secs(env("XP_BENCH_SECS", 600)), run_proxy(listener, ctx)).await;
+            let _ = tokio::time::timeout(
+                Duration::from_secs(env("XP_BENCH_SECS", 600)),
+                run_proxy(listener, ctx),
+            )
+            .await;
         });
     }
 

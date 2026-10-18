@@ -45,7 +45,7 @@ pub fn open_in_external_player(
     // il player esterno ha bisogno della connessione al provider
     crate::transcode::release_parked();
     // player preferito dalle impostazioni; se manca si prova l'altro
-    let order: [fn(&str, &str, bool) -> Option<String>; 2] = if prefer.as_deref() == Some("vlc") {
+    let order: [Opener; 2] = if prefer.as_deref() == Some("vlc") {
         [open_vlc, open_mpv]
     } else {
         [open_mpv, open_vlc]
@@ -58,13 +58,19 @@ pub fn open_in_external_player(
         })
 }
 
+/// Avvia un player esterno su (url, titolo, live) e ne restituisce il nome; `None` se non parte.
+type Opener = fn(&str, &str, bool) -> Option<String>;
+
 fn open_mpv(url: &str, title: &str, live: bool) -> Option<String> {
     let mpv = player_candidates(
         "mpv",
         vec![
             env_path("ProgramFiles", &["mpv", "mpv.exe"]),
             env_path("LOCALAPPDATA", &["Programs", "mpv", "mpv.exe"]),
-            env_path("USERPROFILE", &["scoop", "apps", "mpv", "current", "mpv.exe"]),
+            env_path(
+                "USERPROFILE",
+                &["scoop", "apps", "mpv", "current", "mpv.exe"],
+            ),
             env_path("USERPROFILE", &["scoop", "shims", "mpv.exe"]),
             env_path("ProgramData", &["chocolatey", "bin", "mpv.exe"]),
             env_path("LOCALAPPDATA", &["Programs", "mpv.net", "mpvnet.exe"]),
@@ -110,13 +116,20 @@ fn open_vlc(url: &str, title: &str, live: bool) -> Option<String> {
         vec![
             env_path("ProgramFiles", &["VideoLAN", "VLC", "vlc.exe"]),
             env_path("ProgramFiles(x86)", &["VideoLAN", "VLC", "vlc.exe"]),
-            env_path("USERPROFILE", &["scoop", "apps", "vlc", "current", "vlc.exe"]),
+            env_path(
+                "USERPROFILE",
+                &["scoop", "apps", "vlc", "current", "vlc.exe"],
+            ),
         ],
     );
     for exe in vlc {
         let mut cmd = Command::new(&exe);
         cmd.arg(format!("--http-user-agent={}", USER_AGENT))
-            .arg(if live { "--network-caching=1000" } else { "--network-caching=3000" });
+            .arg(if live {
+                "--network-caching=1000"
+            } else {
+                "--network-caching=3000"
+            });
         if !title.is_empty() {
             cmd.arg(format!("--meta-title={}", title));
         }

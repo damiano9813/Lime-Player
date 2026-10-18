@@ -12,7 +12,9 @@ use reqwest::Url;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
-use crate::media::{build_ffmpeg_args, build_subtitle_args, media_tools, tokio_cmd, FfmpegJob, Quality};
+use crate::media::{
+    build_ffmpeg_args, build_subtitle_args, media_tools, tokio_cmd, FfmpegJob, Quality,
+};
 use crate::proxy::write_simple;
 use crate::ts::pump_live;
 use crate::util::{describe_reqwest_error, preview, CORS_HEADERS};
@@ -20,13 +22,21 @@ use crate::util::{describe_reqwest_error, preview, CORS_HEADERS};
 /// Apre lo stream del provider. Dopo un cambio canale il provider può contare ancora la
 /// connessione precedente (limite connessioni dell'account): qualche tentativo ravvicinato
 /// prima di arrendersi.
-pub async fn open_upstream(client: &reqwest::Client, target: &Url) -> Result<reqwest::Response, String> {
+pub async fn open_upstream(
+    client: &reqwest::Client,
+    target: &Url,
+) -> Result<reqwest::Response, String> {
     let mut last_err = String::new();
     for attempt in 0..4u64 {
         if attempt > 0 {
             tokio::time::sleep(Duration::from_millis(600 * attempt)).await;
         }
-        match client.get(target.clone()).header(ACCEPT, "*/*").send().await {
+        match client
+            .get(target.clone())
+            .header(ACCEPT, "*/*")
+            .send()
+            .await
+        {
             Ok(r) if r.status().is_success() => return Ok(r),
             Ok(r) => last_err = format!("Il provider ha risposto HTTP {}", r.status().as_u16()),
             Err(e) => last_err = describe_reqwest_error(e),
@@ -55,12 +65,16 @@ pub async fn handle_transcode(
     let live = params.get("live").map(|s| s != "0").unwrap_or(true);
     let sid = params.get("sid").cloned();
     // film: mpegts.js riapre lo stesso URL con "Range: bytes=N-" dopo aver sospeso il download
-    if let (false, Some(sid), Some(from)) = (live, sid.as_deref(), range.and_then(parse_range_start)) {
+    if let (false, Some(sid), Some(from)) =
+        (live, sid.as_deref(), range.and_then(parse_range_start))
+    {
         if from > 0 {
             return match take_parked(sid, from) {
                 Some(sess) => resume_session(sock, sess, from).await,
                 // sessione scaduta: il player riparte dal punto attuale con un nuovo seek
-                None => write_simple(&mut sock, 410, "Gone", "Sessione di conversione terminata").await,
+                None => {
+                    write_simple(&mut sock, 410, "Gone", "Sessione di conversione terminata").await
+                }
             };
         }
     }
@@ -86,8 +100,17 @@ pub async fn handle_transcode(
         .and_then(|s| s.parse::<f64>().ok())
         .filter(|x| x.is_finite() && *x >= 0.0)
         .unwrap_or(0.0);
-    let encoder = tools.encoder.clone().unwrap_or_else(|| "libx264".to_string());
-    let num = |k: &str| params.get(k).and_then(|s| s.parse::<i64>().ok()).unwrap_or(0).max(0);
+    let encoder = tools
+        .encoder
+        .clone()
+        .unwrap_or_else(|| "libx264".to_string());
+    let num = |k: &str| {
+        params
+            .get(k)
+            .and_then(|s| s.parse::<i64>().ok())
+            .unwrap_or(0)
+            .max(0)
+    };
     // live: il proxy legge il flusso, salta la raffica iniziale e passa a ffmpeg solo il bordo live
     let from_pipe = live;
     let mut upstream: Option<reqwest::Response> = None;
@@ -119,14 +142,22 @@ pub async fn handle_transcode(
     let args = build_ffmpeg_args(&job);
 
     let mut cmd = tokio_cmd(&ffmpeg);
-    cmd.args(&args).stdout(Stdio::piped()).stderr(Stdio::piped());
+    cmd.args(&args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     if from_pipe {
         cmd.stdin(Stdio::piped());
     }
     let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(e) => {
-            return write_simple(&mut sock, 500, "Internal Server Error", &format!("Avvio ffmpeg fallito: {}", e)).await
+            return write_simple(
+                &mut sock,
+                500,
+                "Internal Server Error",
+                &format!("Avvio ffmpeg fallito: {}", e),
+            )
+            .await
         }
     };
     // il feeder si ferma quando questa richiesta termina (client disconnesso o errore)
@@ -147,7 +178,15 @@ pub async fn handle_transcode(
     }
     let stdout = match child.stdout.take() {
         Some(s) => s,
-        None => return write_simple(&mut sock, 500, "Internal Server Error", "stdout di ffmpeg non disponibile").await,
+        None => {
+            return write_simple(
+                &mut sock,
+                500,
+                "Internal Server Error",
+                "stdout di ffmpeg non disponibile",
+            )
+            .await
+        }
     };
     // stderr va svuotato, altrimenti ffmpeg può bloccarsi; si tiene la coda per gli errori
     let err_tail = Arc::new(Mutex::new(String::new()));
@@ -184,7 +223,10 @@ pub async fn handle_transcode(
             let _ = child.start_kill();
             let _ = tokio::time::timeout(Duration::from_secs(3), child.wait()).await;
             tokio::time::sleep(Duration::from_millis(100)).await;
-            let msg = err_tail.lock().map(|t| t.trim().to_string()).unwrap_or_default();
+            let msg = err_tail
+                .lock()
+                .map(|t| t.trim().to_string())
+                .unwrap_or_default();
             let msg = if msg.is_empty() {
                 "ffmpeg non ha prodotto dati (stream offline o non raggiungibile)".to_string()
             } else {
@@ -198,7 +240,13 @@ pub async fn handle_transcode(
         CORS_HEADERS
     );
     sock.write_all(head.as_bytes()).await?;
-    let mut sess = Session { sid: sid.unwrap_or_default(), child, stdout, replay: Replay::new(REPLAY_BYTES), subtitle_buffers };
+    let mut sess = Session {
+        sid: sid.unwrap_or_default(),
+        child,
+        stdout,
+        replay: Replay::new(REPLAY_BYTES),
+        subtitle_buffers,
+    };
     sess.replay.record(&buf[..n]);
     // solo i film si possono sospendere e riprendere; i live si chiudono subito
     let parkable = !live && !sess.sid.is_empty();
@@ -254,7 +302,11 @@ struct Replay {
 
 impl Replay {
     fn new(limit: usize) -> Self {
-        Replay { produced: 0, tail: VecDeque::new(), limit }
+        Replay {
+            produced: 0,
+            tail: VecDeque::new(),
+            limit,
+        }
     }
 
     fn record(&mut self, chunk: &[u8]) {
@@ -270,7 +322,12 @@ impl Replay {
         if from < start || from > self.produced {
             return None;
         }
-        Some(self.tail.range((from - start) as usize..).copied().collect())
+        Some(
+            self.tail
+                .range((from - start) as usize..)
+                .copied()
+                .collect(),
+        )
     }
 }
 
@@ -299,7 +356,10 @@ fn park(sess: Session) {
 
 fn take_parked(sid: &str, from: u64) -> Option<Session> {
     let mut p = parked().lock().ok()?;
-    let ok = p.as_ref().map(|(_, s)| s.sid == sid && s.replay.from(from).is_some()).unwrap_or(false);
+    let ok = p
+        .as_ref()
+        .map(|(_, s)| s.sid == sid && s.replay.from(from).is_some())
+        .unwrap_or(false);
     if ok {
         p.take().map(|(_, s)| s)
     } else {
@@ -390,7 +450,11 @@ struct SubtitleBuffer {
 
 impl SubtitleBuffer {
     fn new() -> Self {
-        SubtitleBuffer { data: Mutex::new(Vec::new()), seen: Mutex::new(HashSet::new()), finished: AtomicBool::new(false) }
+        SubtitleBuffer {
+            data: Mutex::new(Vec::new()),
+            seen: Mutex::new(HashSet::new()),
+            finished: AtomicBool::new(false),
+        }
     }
 
     /// Aggiunge un blocco WebVTT completo (intestazione o cue), se non è già presente.
@@ -399,7 +463,9 @@ impl SubtitleBuffer {
         if block.trim().is_empty() {
             return;
         }
-        let (Ok(mut data), Ok(mut seen)) = (self.data.lock(), self.seen.lock()) else { return };
+        let (Ok(mut data), Ok(mut seen)) = (self.data.lock(), self.seen.lock()) else {
+            return;
+        };
         if block.starts_with("WEBVTT") {
             if data.is_empty() {
                 data.extend_from_slice(b"WEBVTT\n\n");
@@ -438,15 +504,18 @@ impl VttSplitter {
 }
 
 type SubtitleKey = (String, usize);
+type SubtitleRegistry = Mutex<Vec<(SubtitleKey, Arc<SubtitleBuffer>)>>;
 
-fn subtitle_sessions() -> &'static Mutex<Vec<(SubtitleKey, Arc<SubtitleBuffer>)>> {
-    static REG: OnceLock<Mutex<Vec<(SubtitleKey, Arc<SubtitleBuffer>)>>> = OnceLock::new();
+fn subtitle_sessions() -> &'static SubtitleRegistry {
+    static REG: OnceLock<SubtitleRegistry> = OnceLock::new();
     REG.get_or_init(|| Mutex::new(Vec::new()))
 }
 
 fn find_subtitle_buffer(sid: &str, index: usize) -> Option<Arc<SubtitleBuffer>> {
     let reg = subtitle_sessions().lock().ok()?;
-    reg.iter().find(|((s, i), _)| s == sid && *i == index).map(|(_, b)| b.clone())
+    reg.iter()
+        .find(|((s, i), _)| s == sid && *i == index)
+        .map(|(_, b)| b.clone())
 }
 
 /// "0,2,x,3" → [0, 2, 3] (al massimo 12 tracce, senza doppioni)
@@ -479,7 +548,9 @@ async fn open_subtitle_sink(sid: &str, index: usize) -> Option<(String, Arc<Subt
     };
     let sink = buf.clone();
     tokio::spawn(async move {
-        if let Ok(Ok((mut conn, _))) = tokio::time::timeout(Duration::from_secs(60), listener.accept()).await {
+        if let Ok(Ok((mut conn, _))) =
+            tokio::time::timeout(Duration::from_secs(60), listener.accept()).await
+        {
             let mut splitter = VttSplitter::default();
             let mut b = [0u8; 4096];
             let mut carry: Vec<u8> = Vec::new();
@@ -536,7 +607,11 @@ pub async fn handle_subtitles(
         let _ = sock.shutdown().await;
         return Ok(());
     }
-    let index = params.get("i").and_then(|s| s.parse::<usize>().ok()).unwrap_or(0).min(64);
+    let index = params
+        .get("i")
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(0)
+        .min(64);
     match params.get("sid") {
         Some(sid) => serve_session_subtitles(sock, sid, index).await,
         None => extract_subtitles(sock, target, index, params).await,
@@ -556,7 +631,15 @@ async fn serve_session_subtitles(mut sock: TcpStream, sid: &str, index: usize) -
     }
     let buf = match buf {
         Some(b) => b,
-        None => return write_simple(&mut sock, 404, "Not Found", "Sottotitoli non disponibili per questa sessione").await,
+        None => {
+            return write_simple(
+                &mut sock,
+                404,
+                "Not Found",
+                "Sottotitoli non disponibili per questa sessione",
+            )
+            .await
+        }
     };
     sock.write_all(vtt_head().as_bytes()).await?;
     let mut sent = 0usize;
@@ -564,7 +647,11 @@ async fn serve_session_subtitles(mut sock: TcpStream, sid: &str, index: usize) -
         if SUBTITLE_GEN.load(Ordering::SeqCst) != generation {
             break;
         }
-        let chunk = buf.data.lock().map(|d| d[sent.min(d.len())..].to_vec()).unwrap_or_default();
+        let chunk = buf
+            .data
+            .lock()
+            .map(|d| d[sent.min(d.len())..].to_vec())
+            .unwrap_or_default();
         if !chunk.is_empty() {
             if sock.write_all(&chunk).await.is_err() {
                 break;
@@ -597,7 +684,9 @@ async fn extract_subtitles(
 ) -> io::Result<()> {
     let ffmpeg = match media_tools(false).await.ffmpeg.clone() {
         Some(p) => p,
-        None => return write_simple(&mut sock, 503, "Service Unavailable", "ffmpeg non trovato").await,
+        None => {
+            return write_simple(&mut sock, 503, "Service Unavailable", "ffmpeg non trovato").await
+        }
     };
     let ss = params
         .get("ss")
@@ -612,12 +701,26 @@ async fn extract_subtitles(
     let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(e) => {
-            return write_simple(&mut sock, 500, "Internal Server Error", &format!("Avvio ffmpeg fallito: {}", e)).await
+            return write_simple(
+                &mut sock,
+                500,
+                "Internal Server Error",
+                &format!("Avvio ffmpeg fallito: {}", e),
+            )
+            .await
         }
     };
     let (mut stdout, mut stderr) = match (child.stdout.take(), child.stderr.take()) {
         (Some(o), Some(e)) => (o, e),
-        _ => return write_simple(&mut sock, 500, "Internal Server Error", "ffmpeg non disponibile").await,
+        _ => {
+            return write_simple(
+                &mut sock,
+                500,
+                "Internal Server Error",
+                "ffmpeg non disponibile",
+            )
+            .await
+        }
     };
     let err_tail = Arc::new(Mutex::new(String::new()));
     {
@@ -642,8 +745,15 @@ async fn extract_subtitles(
         _ => {
             let _ = child.start_kill();
             let _ = tokio::time::timeout(Duration::from_secs(3), child.wait()).await;
-            let msg = err_tail.lock().map(|t| t.trim().to_string()).unwrap_or_default();
-            let msg = if msg.is_empty() { "nessun sottotitolo prodotto".to_string() } else { preview(&msg) };
+            let msg = err_tail
+                .lock()
+                .map(|t| t.trim().to_string())
+                .unwrap_or_default();
+            let msg = if msg.is_empty() {
+                "nessun sottotitolo prodotto".to_string()
+            } else {
+                preview(&msg)
+            };
             return write_simple(&mut sock, 502, "Bad Gateway", &format!("ffmpeg: {}", msg)).await;
         }
     };
@@ -687,7 +797,11 @@ mod tests {
         // tenuti solo gli ultimi 10 byte: da 5 a 14
         assert_eq!(r.from(5).unwrap(), b"56789abcde".to_vec());
         assert_eq!(r.from(12).unwrap(), b"cde".to_vec());
-        assert_eq!(r.from(15).unwrap(), Vec::<u8>::new(), "ripresa esatta alla fine");
+        assert_eq!(
+            r.from(15).unwrap(),
+            Vec::<u8>::new(),
+            "ripresa esatta alla fine"
+        );
         assert!(r.from(4).is_none(), "troppo indietro");
         assert!(r.from(16).is_none(), "oltre i byte prodotti");
     }
@@ -705,8 +819,15 @@ mod tests {
     fn subtitle_index_list() {
         assert_eq!(parse_index_list("0,2,x,3,2"), vec![0, 2, 3]);
         assert_eq!(parse_index_list(""), Vec::<usize>::new());
-        assert_eq!(parse_index_list("99,1"), vec![1], "indici fuori scala ignorati");
-        assert_eq!(parse_index_list(&(0..40).map(|i| i.to_string()).collect::<Vec<_>>().join(",")).len(), 12);
+        assert_eq!(
+            parse_index_list("99,1"),
+            vec![1],
+            "indici fuori scala ignorati"
+        );
+        assert_eq!(
+            parse_index_list(&(0..40).map(|i| i.to_string()).collect::<Vec<_>>().join(",")).len(),
+            12
+        );
     }
 
     #[test]
@@ -726,7 +847,8 @@ due";
         s1.finish(&buf);
         // la richiesta riaperta riparte dallo stesso punto: stessi cue più quelli nuovi
         let mut s2 = VttSplitter::default();
-        s2.feed("WEBVTT
+        s2.feed(
+            "WEBVTT
 
 00:01.000 --> 00:02.000
 uno
@@ -737,7 +859,9 @@ due
 00:05.000 --> 00:06.000
 tre
 
-", &buf);
+",
+            &buf,
+        );
         let text = String::from_utf8(buf.data.lock().unwrap().clone()).unwrap();
         assert_eq!(
             text,
@@ -758,17 +882,25 @@ tre
 
     #[test]
     fn session_subtitles_are_collected_from_the_socket() {
-        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
         rt.block_on(async {
-            let (url, buf) = open_subtitle_sink("sessione-test", 1).await.expect("socket locale");
-            let mut w = TcpStream::connect(url.trim_start_matches("tcp://")).await.unwrap();
+            let (url, buf) = open_subtitle_sink("sessione-test", 1)
+                .await
+                .expect("socket locale");
+            let mut w = TcpStream::connect(url.trim_start_matches("tcp://"))
+                .await
+                .unwrap();
             // "città" diviso a metà di un carattere UTF-8
             let msg = "WEBVTT
 
 00:01.000 --> 00:02.000
 città
 
-".as_bytes();
+"
+            .as_bytes();
             let cut = msg.len() - 4;
             w.write_all(&msg[..cut]).await.unwrap();
             w.flush().await.unwrap();
@@ -776,19 +908,25 @@ città
             w.write_all(&msg[cut..]).await.unwrap();
             drop(w);
             for _ in 0..50 {
-                if buf.data.lock().unwrap().ends_with(b"
+                if buf.data.lock().unwrap().ends_with(
+                    b"
 
-") && buf.data.lock().unwrap().len() > 10 {
+",
+                ) && buf.data.lock().unwrap().len() > 10
+                {
                     break;
                 }
                 tokio::time::sleep(Duration::from_millis(20)).await;
             }
-            assert_eq!(String::from_utf8(buf.data.lock().unwrap().clone()).unwrap(), "WEBVTT
+            assert_eq!(
+                String::from_utf8(buf.data.lock().unwrap().clone()).unwrap(),
+                "WEBVTT
 
 00:01.000 --> 00:02.000
 città
 
-");
+"
+            );
             // la stessa sessione riaperta usa lo stesso buffer
             let (_, again) = open_subtitle_sink("sessione-test", 1).await.unwrap();
             assert!(Arc::ptr_eq(&buf, &again));

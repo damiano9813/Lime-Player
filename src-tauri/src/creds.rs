@@ -84,7 +84,9 @@ impl Vault for KeyringVault {
         }
     }
     fn set(&self, key: &str, password: &str) -> Result<(), String> {
-        Self::entry(key)?.set_password(password).map_err(|e| e.to_string())
+        Self::entry(key)?
+            .set_password(password)
+            .map_err(|e| e.to_string())
     }
     fn delete(&self, key: &str) -> Result<(), String> {
         match Self::entry(key)?.delete_credential() {
@@ -226,17 +228,21 @@ mod tests {
         dir.join("credentials.json")
     }
 
-    const LEGACY: &str = r#"{ "server": "http://h:8080", "username": "mario", "password": "segreta" }"#;
+    const LEGACY: &str =
+        r#"{ "server": "http://h:8080", "username": "mario", "password": "segreta" }"#;
 
     #[test]
     fn parse_old_and_new_format() {
         let old = parse_credentials_file(LEGACY).unwrap();
         assert_eq!(old.account.vault_key(), "mario@http://h:8080");
         assert_eq!(old.legacy_password.as_deref(), Some("segreta"));
-        let new = parse_credentials_file(r#"{ "server": "http://h:8080", "username": "mario" }"#).unwrap();
+        let new = parse_credentials_file(r#"{ "server": "http://h:8080", "username": "mario" }"#)
+            .unwrap();
         assert_eq!(new.account, old.account);
         assert_eq!(new.legacy_password, None);
-        let empty_pw = parse_credentials_file(r#"{ "server": "s", "username": "u", "password": "" }"#).unwrap();
+        let empty_pw =
+            parse_credentials_file(r#"{ "server": "s", "username": "u", "password": "" }"#)
+                .unwrap();
         assert_eq!(empty_pw.legacy_password, None);
         assert!(parse_credentials_file("non json").is_none());
         assert!(parse_credentials_file(r#"{ "server": "", "username": "u" }"#).is_none());
@@ -249,9 +255,16 @@ mod tests {
         let vault = MemVault::default();
         let c = load_with(&path, &vault).unwrap().unwrap();
         assert_eq!(c.password, "segreta");
-        assert_eq!(vault.get("mario@http://h:8080").unwrap().as_deref(), Some("segreta"));
+        assert_eq!(
+            vault.get("mario@http://h:8080").unwrap().as_deref(),
+            Some("segreta")
+        );
         let text = std::fs::read_to_string(&path).unwrap();
-        assert!(!text.contains("segreta") && !text.contains("password"), "{}", text);
+        assert!(
+            !text.contains("segreta") && !text.contains("password"),
+            "{}",
+            text
+        );
         // secondo avvio: password letta dal vault
         assert_eq!(load_with(&path, &vault).unwrap().unwrap(), c);
         std::fs::remove_dir_all(path.parent().unwrap()).ok();
@@ -261,8 +274,14 @@ mod tests {
     fn legacy_file_kept_when_vault_fails() {
         let path = temp_file("rotto");
         std::fs::write(&path, LEGACY).unwrap();
-        let vault = MemVault { broken: true, ..Default::default() };
-        assert_eq!(load_with(&path, &vault).unwrap().unwrap().password, "segreta");
+        let vault = MemVault {
+            broken: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            load_with(&path, &vault).unwrap().unwrap().password,
+            "segreta"
+        );
         assert_eq!(std::fs::read_to_string(&path).unwrap(), LEGACY);
         std::fs::remove_dir_all(path.parent().unwrap()).ok();
     }
@@ -272,12 +291,20 @@ mod tests {
         let path = temp_file("salva");
         let vault = MemVault::default();
         assert_eq!(load_with(&path, &vault).unwrap(), None);
-        let a = SavedCredentials { server: "http://a".into(), username: "u1".into(), password: "p1".into() };
+        let a = SavedCredentials {
+            server: "http://a".into(),
+            username: "u1".into(),
+            password: "p1".into(),
+        };
         save_with(&path, &vault, a.clone()).unwrap();
         assert!(!std::fs::read_to_string(&path).unwrap().contains("p1"));
         assert_eq!(load_with(&path, &vault).unwrap(), Some(a));
         // cambio account: la vecchia password esce dal vault
-        let b = SavedCredentials { server: "http://b".into(), username: "u2".into(), password: "p2".into() };
+        let b = SavedCredentials {
+            server: "http://b".into(),
+            username: "u2".into(),
+            password: "p2".into(),
+        };
         save_with(&path, &vault, b.clone()).unwrap();
         assert_eq!(vault.get("u1@http://a").unwrap(), None);
         assert_eq!(load_with(&path, &vault).unwrap(), Some(b));

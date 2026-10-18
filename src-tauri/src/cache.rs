@@ -1,10 +1,8 @@
 //! Cache su disco di categorie e liste: la lista salvata si mostra subito e viene
 //! aggiornata in background; il risultato arriva alla UI con l'evento `list-updated`.
 
-use std::collections::hash_map::DefaultHasher;
 use std::collections::HashSet;
 use std::future::Future;
-use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -19,6 +17,18 @@ pub const MAX_AGE_SECS: u64 = 24 * 3600;
 /// Sotto questa età non si riscarica in background (evita richieste a ogni cambio categoria).
 pub const FRESH_SECS: u64 = 10 * 60;
 
+const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+
+/// FNV-1a a 64 bit: continua l'hash `h` con i byte dati.
+fn fnv1a(mut h: u64, bytes: &[u8]) -> u64 {
+    for &b in bytes {
+        h ^= u64::from(b);
+        h = h.wrapping_mul(FNV_PRIME);
+    }
+    h
+}
+
 /// Identifica una lista salvata: account (server + utente) e richiesta.
 #[derive(Debug, Clone)]
 pub struct CacheKey {
@@ -29,18 +39,31 @@ pub struct CacheKey {
 }
 
 impl CacheKey {
+    /// Nome della cartella dell'account: deve restare uguale tra versioni e build
+    /// diverse, per questo non si usa `DefaultHasher` (algoritmo non garantito).
     fn account_hash(&self) -> String {
-        let mut h = DefaultHasher::new();
-        self.server.hash(&mut h);
-        self.username.trim().hash(&mut h);
-        format!("{:016x}", h.finish())
+        // 0xff non compare mai in UTF-8: separa server e utente senza ambiguità
+        let h = fnv1a(FNV_OFFSET, self.server.as_bytes());
+        let h = fnv1a(h, &[0xff]);
+        let h = fnv1a(h, self.username.trim().as_bytes());
+        format!("{:016x}", h)
     }
 
     fn file_name(&self) -> String {
-        let cat = if self.category.is_empty() { "all" } else { &self.category };
+        let cat = if self.category.is_empty() {
+            "all"
+        } else {
+            &self.category
+        };
         let safe = |s: &str| -> String {
             s.chars()
-                .map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
+                .map(|c| {
+                    if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
+                        c
+                    } else {
+                        '_'
+                    }
+                })
                 .collect()
         };
         format!("{}__{}.json", safe(&self.action), safe(cat))
@@ -104,12 +127,16 @@ fn read<T: DeserializeOwned>(app: &AppHandle, key: &CacheKey) -> Option<(u64, Ve
 }
 
 fn write<T: Serialize>(app: &AppHandle, key: &CacheKey, fetched_at: u64, items: &[T]) {
-    let Some(path) = entry_path(app, key) else { return };
+    let Some(path) = entry_path(app, key) else {
+        return;
+    };
     let Some(dir) = path.parent() else { return };
     if std::fs::create_dir_all(dir).is_err() {
         return;
     }
-    let Ok(bytes) = serde_json::to_vec(&EntryRef { fetched_at, items }) else { return };
+    let Ok(bytes) = serde_json::to_vec(&EntryRef { fetched_at, items }) else {
+        return;
+    };
     // scrittura atomica: un file a metà non viene mai letto
     let tmp = path.with_extension("json.tmp");
     if std::fs::write(&tmp, bytes).is_ok() {
@@ -144,7 +171,11 @@ where
     F: Fn() -> Fut + Send + 'static,
     Fut: Future<Output = Result<Vec<T>, String>> + Send + 'static,
 {
-    let cached = if policy == "refresh" { None } else { read::<T>(&app, &key) };
+    let cached = if policy == "refresh" {
+        None
+    } else {
+        read::<T>(&app, &key)
+    };
     let now = now_secs();
     if let Some((fetched_at, items)) = cached {
         let age = now.saturating_sub(fetched_at);
@@ -157,33 +188,55 @@ where
                         write(&app, &key, at, &fresh);
                         let _ = app.emit(
                             "list-updated",
-                            ListUpdated { action: key.action.clone(), category_id: key.category.clone(), items: fresh, fetched_at: at },
+                            ListUpdated {
+                                action: key.action.clone(),
+                                category_id: key.category.clone(),
+                                items: fresh,
+                                fetched_at: at,
+                            },
                         );
                     }
                     end(&id);
                 });
             }
-            return Ok(Listing { items, from_cache: true, fetched_at });
+            return Ok(Listing {
+                items,
+                from_cache: true,
+                fetched_at,
+            });
         }
         // cache vecchia: si prova a scaricare, ma senza rete resta meglio di niente
         return match fetch().await {
             Ok(fresh) => {
                 write(&app, &key, now, &fresh);
-                Ok(Listing { items: fresh, from_cache: false, fetched_at: now })
+                Ok(Listing {
+                    items: fresh,
+                    from_cache: false,
+                    fetched_at: now,
+                })
             }
-            Err(_) => Ok(Listing { items, from_cache: true, fetched_at }),
+            Err(_) => Ok(Listing {
+                items,
+                from_cache: true,
+                fetched_at,
+            }),
         };
     }
     let fresh = fetch().await?;
     write(&app, &key, now, &fresh);
-    Ok(Listing { items: fresh, from_cache: false, fetched_at: now })
+    Ok(Listing {
+        items: fresh,
+        from_cache: false,
+        fetched_at: now,
+    })
 }
 
 /// Cancella tutte le liste salvate (logout / svuota cache).
 #[tauri::command]
 pub fn clear_list_cache(app: AppHandle) -> Result<(), String> {
     match lists_dir(&app) {
-        Some(dir) if dir.exists() => std::fs::remove_dir_all(&dir).map_err(|e| format!("Impossibile svuotare la cache: {}", e)),
+        Some(dir) if dir.exists() => std::fs::remove_dir_all(&dir)
+            .map_err(|e| format!("Impossibile svuotare la cache: {}", e)),
         _ => Ok(()),
     }
 }
@@ -216,6 +269,18 @@ mod tests {
         assert_eq!(a.account_hash(), b.account_hash());
         b.username = "luigi".into();
         assert_ne!(a.account_hash(), b.account_hash());
+    }
+
+    #[test]
+    fn account_hash_is_stable() {
+        // vettori di riferimento di FNV-1a a 64 bit
+        assert_eq!(fnv1a(FNV_OFFSET, b""), 0xcbf2_9ce4_8422_2325);
+        assert_eq!(fnv1a(FNV_OFFSET, b"a"), 0xaf63_dc4c_8601_ec8c);
+        // valore fisso: se cambia, le cache già salvate non vengono più trovate
+        assert_eq!(key("1").account_hash(), "06c04b313074557a");
+        let mut spaced = key("1");
+        spaced.username = "  mario ".into();
+        assert_eq!(spaced.account_hash(), key("1").account_hash());
     }
 
     #[test]
