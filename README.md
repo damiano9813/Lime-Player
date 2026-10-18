@@ -13,7 +13,7 @@ Lime-Player/
 │  ├─ index.html                 markup e stili
 │  ├─ vendor/                    generata: app.css (Tailwind), mpegts.js, hls.js
 │  └─ js/
-│     ├─ core.js                 logica pura testabile: codec, percorsi, URL, buffer adattivo
+│     ├─ core.js                 logica pura testabile: codec, percorsi, URL, buffer adattivo, griglia guida
 │     ├─ 01-base.js              utilità, toast, modale, scorciatoie, icone
 │     ├─ 02-state.js             costanti e stato condiviso
 │     ├─ 03-login.js             login, logout, account
@@ -22,7 +22,8 @@ Lime-Player/
 │     ├─ 06-player.js            player, conversione ffmpeg, buffer adattivo
 │     ├─ 07-controls.js          controlli del player e pannello info
 │     ├─ 08-content.js           guida TV, serie ed episodi, catch-up, scheda film
-│     └─ 09-main.js              tastiera e avvio
+│     ├─ 09-guide.js             guida TV a griglia
+│     └─ 10-main.js              tastiera e avvio
 └─ src-tauri/
    ├─ Cargo.toml, build.rs, tauri.conf.json, capabilities/, icons/
    ├─ binaries/                  generata: ffmpeg/ffprobe per l'installer (non versionata)
@@ -30,6 +31,7 @@ Lime-Player/
       ├─ main.rs                 avvio e registrazione dei comandi
       ├─ xtream.rs               client Xtream Codes, modelli tolleranti, comandi
       ├─ catalog.rs              guida TV (base64), serie con episodi, scheda film
+      ├─ guide.rs                guida completa da xmltv.php (download e analisi in streaming)
       ├─ cache.rs                cache su disco delle liste
       ├─ state.rs                stato condiviso
       ├─ creds.rs                credenziali (password in Gestione credenziali di Windows)
@@ -53,6 +55,9 @@ npm test
 cd src-tauri
 cargo test
 ```
+
+`XP_SAMPLES=<cartella> cargo test xmltv_real -- --ignored --nocapture` analizza una guida reale
+salvata come `xmltv.xml` (o `xmltv.xml.gz`) nella cartella e stampa canali, programmi e tempi.
 
 `cargo test keyring_roundtrip -- --ignored` prova il vero vault di Windows (crea e cancella una
 voce di prova).
@@ -223,6 +228,34 @@ PATH.
 - **Guida TV**: programma in onda e successivo nel pannello info (con barra di avanzamento),
   nell'OSD a schermo intero e nelle righe visibili della lista (richiesta solo a scroll fermo,
   al massimo 4 richieste insieme, memorizzata 10 minuti).
+- **Guida TV a griglia** (pulsante "Guida" sopra la lista dei canali, tasto **G**): canali della
+  lista attuale (categoria scelta e ricerca) in righe, un giorno da mezzanotte a mezzanotte in
+  colonne (4 px al minuto), linea rossa sull'ora attuale, giorni da quelli di archivio dei canali
+  (fino a 7) a 3 avanti. Clic su un programma in onda o sul nome del canale: avvia il canale; clic
+  su un programma passato di un canale con archivio: catch-up. Righe virtualizzate come la lista
+  e, in orizzontale, solo i blocchi vicini alla parte visibile; si ridisegna solo quando lo
+  scroll esce dalla parte già disegnata. Esc o G la chiudono.
+  - **Fonte: `xmltv.php`** (`guide.rs`), scelta al posto di `get_simple_data_table` per canale:
+    una sola richiesta porta la guida di tutti i canali e di più giorni, quindi scorrere la
+    griglia o cambiare categoria non genera raffiche di richieste (con `get_simple_data_table`
+    servirebbe una richiesta per ogni canale visibile, ognuna con tutto l'archivio del canale).
+    Il file può superare le centinaia di MB: si scarica in streaming su disco (avanzamento nella
+    UI con l'evento `guide-progress`), si legge in streaming con quick-xml (anche compresso con
+    gzip) e in memoria resta solo un indice per `epg_channel_id` (senza distinzione di maiuscole)
+    con i programmi da 8 giorni fa a 8 avanti e le descrizioni accorciate: una guida di prova da
+    130 MB e 394.000 programmi si legge in meno di un secondo in release. La copia compatta in
+    JSON (`lists\<account>\xmltv.json`) si usa subito ai riavvii e si riscarica in background
+    dopo 6 ore (evento `guide-updated`); "Svuota cache" ed "Esci" la cancellano.
+  - **Riserva per canale**: i canali senza `epg_channel_id`, assenti da `xmltv.php` o senza
+    programmi in quel giorno (per esempio giorni di archivio che la guida completa non copre), e
+    tutti i canali se il server non offre `xmltv.php`, usano `get_epg_day`
+    (`get_simple_data_table`), chiesto solo per le righe disegnate, al massimo 3 insieme.
+  - **Catch-up dalla griglia**: `/timeshift/` vuole l'orario di inizio nel fuso del server, che
+    `get_simple_data_table` riporta così com'è: il programma della griglia viene abbinato per
+    orario di inizio (±2 minuti) alla voce della guida del canale; solo se manca si usa l'ora
+    locale scritta in `xmltv.php`. È rivedibile un programma finito di un canale con
+    `tv_archive`, iniziato entro `tv_archive_duration` giorni (3 se assente), come nel pannello
+    del catch-up.
 - **Serie TV**: terza sezione con stagioni ed episodi; ripresa per episodio, episodio
   successivo automatico, ↑/↓ tra gli episodi. Preferiti e recenti si riferiscono alla serie.
 - **Catch-up**: per i canali con archivio (icona accanto al nome) il pannello "Rivedi i

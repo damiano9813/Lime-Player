@@ -5269,8 +5269,10 @@ name = "xtream-player"
 version = "1.0.3"
 dependencies = [
  "base64 0.22.1",
+ "flate2",
  "futures-util",
  "keyring",
+ "quick-xml",
  "reqwest 0.12.28",
  "serde",
  "serde_json",

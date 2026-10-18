@@ -62,7 +62,7 @@ const SHORTCUTS = [
   [['⌫'], 'Torna all\'ultimo contenuto visto'],
   [['←', '→'], 'Indietro / avanti 10 s (film)'], [['+', '−'], 'Volume (anche rotella sul player)'], [['M'], 'Muto'],
   [['F'], 'Schermo intero'], [['T'], 'Modalità cinema'], [['P'], 'Picture in Picture'], [['R'], 'Ricarica stream'],
-  [['/'], 'Cerca nella lista'], [['Esc'], 'Svuota la ricerca / chiudi'], [['?'], 'Mostra questo elenco'],
+  [['G'], 'Guida TV a griglia (Live TV)'], [['/'], 'Cerca nella lista'], [['Esc'], 'Svuota la ricerca / chiudi'], [['?'], 'Mostra questo elenco'],
 ];
 function showShortcuts() {
   const rows = SHORTCUTS.map(([keys, desc]) =>

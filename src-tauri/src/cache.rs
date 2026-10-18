@@ -38,15 +38,19 @@ pub struct CacheKey {
     pub category: String,
 }
 
+/// Id della cartella di un account (server normalizzato + utente): deve restare uguale tra
+/// versioni e build diverse, per questo non si usa `DefaultHasher` (algoritmo non garantito).
+pub fn account_hash(server: &str, username: &str) -> String {
+    // 0xff non compare mai in UTF-8: separa server e utente senza ambiguità
+    let h = fnv1a(FNV_OFFSET, server.as_bytes());
+    let h = fnv1a(h, &[0xff]);
+    let h = fnv1a(h, username.trim().as_bytes());
+    format!("{:016x}", h)
+}
+
 impl CacheKey {
-    /// Nome della cartella dell'account: deve restare uguale tra versioni e build
-    /// diverse, per questo non si usa `DefaultHasher` (algoritmo non garantito).
     fn account_hash(&self) -> String {
-        // 0xff non compare mai in UTF-8: separa server e utente senza ambiguità
-        let h = fnv1a(FNV_OFFSET, self.server.as_bytes());
-        let h = fnv1a(h, &[0xff]);
-        let h = fnv1a(h, self.username.trim().as_bytes());
-        format!("{:016x}", h)
+        account_hash(&self.server, &self.username)
     }
 
     fn file_name(&self) -> String {
@@ -114,6 +118,11 @@ pub fn now_secs() -> u64 {
 
 fn lists_dir(app: &AppHandle) -> Option<PathBuf> {
     app.path().app_cache_dir().ok().map(|d| d.join("lists"))
+}
+
+/// Cartella dei dati salvati di un account (`server` già normalizzato).
+pub fn account_dir(app: &AppHandle, server: &str, username: &str) -> Option<PathBuf> {
+    lists_dir(app).map(|d| d.join(account_hash(server, username)))
 }
 
 fn entry_path(app: &AppHandle, key: &CacheKey) -> Option<PathBuf> {
@@ -231,9 +240,10 @@ where
     })
 }
 
-/// Cancella tutte le liste salvate (logout / svuota cache).
+/// Cancella tutte le liste salvate, guida TV compresa (logout / svuota cache).
 #[tauri::command]
 pub fn clear_list_cache(app: AppHandle) -> Result<(), String> {
+    crate::guide::forget();
     match lists_dir(&app) {
         Some(dir) if dir.exists() => std::fs::remove_dir_all(&dir)
             .map_err(|e| format!("Impossibile svuotare la cache: {}", e)),
