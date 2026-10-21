@@ -212,7 +212,7 @@
   }
 
   // ------------------------------------------------------------------ impostazioni
-  const SETTINGS_DEFAULTS = { audioOut: 'stereo', quality: 'bal', audioLang: '', subLang: '', external: 'auto' };
+  const SETTINGS_DEFAULTS = { audioOut: 'stereo', quality: 'bal', audioLang: '', subLang: '', external: 'auto', engine: 'mpv' };
   function normalizeSettings(raw) {
     const r = raw && typeof raw === 'object' ? raw : {};
     const pick = (v, allowed, def) => (allowed.includes(v) ? v : def);
@@ -222,7 +222,37 @@
       audioLang: normLang(r.audioLang),
       subLang: normLang(r.subLang),
       external: pick(r.external, ['auto', 'mpv', 'vlc'], 'auto'),
+      // motore integrato: mpv (libmpv in una finestra nativa) o quello del browser (mpegts.js/MSE)
+      engine: pick(r.engine, ['mpv', 'web'], 'mpv'),
     };
+  }
+
+  // ------------------------------------------------------------------ motore mpv
+  // `track-list` di mpv (JSON) nel formato delle tracce del player: `index` è l'id di mpv.
+  // mpv mostra anche i sottotitoli a immagine, quindi sono tutti selezionabili (`text`).
+  function mpvTracks(list) {
+    const out = { audio: [], subs: [], aid: 0, sid: 0 };
+    for (const t of Array.isArray(list) ? list : []) {
+      if (!t || (t.type !== 'audio' && t.type !== 'sub')) continue;
+      const track = {
+        index: Number(t.id) || 0, lang: t.lang || '', codec: t.codec || '', title: t.title || '',
+        default: !!t.default, forced: !!t.forced,
+      };
+      if (t.type === 'audio') {
+        track.channels = Number(t['demux-channel-count']) || 0;
+        out.audio.push(track);
+        if (t.selected) out.aid = track.index;
+      } else {
+        track.text = true;
+        out.subs.push(track);
+        if (t.selected) out.sid = track.index;
+      }
+    }
+    return out;
+  }
+  // secondi di cache del live per i preset di latenza: "Stabile" tiene più margine
+  function mpvCacheSecs(preset) {
+    return preset === 'min' ? 1 : preset === 'bal' ? 2 : 4;
   }
 
   // Conversione decisa dalla PMT del live (tracce lette dal proxy nei primi millisecondi),
@@ -451,7 +481,7 @@
     escapeHtml, normKey, initials, fmtTime, debounce, highlight,
     buildStreamUrl, proxyUrl, transcodeUrl, subtitleUrl, timeshiftStart, timeshiftUrl,
     normLang, langName, codecName, channelsLabel, trackLabel, pickTrack, audioCopyOk, audioTrackRoute, PREFERRED_LANGS,
-    SETTINGS_DEFAULTS, normalizeSettings, pmtRoute,
+    SETTINGS_DEFAULTS, normalizeSettings, pmtRoute, mpvTracks, mpvCacheSecs,
     currentAndNext, epgProgress, archivedPrograms, hasCodecs, episodeLabel, nextEpisode,
     guideDays, guidePastDays, layoutPrograms, programState, timeTicks, visibleRows, matchProgram,
     audioMime, probeVideoOk, probeAudioOk, mergeRoute, describeRoute, normalizeSavedRoute, mediaInfoRoute,

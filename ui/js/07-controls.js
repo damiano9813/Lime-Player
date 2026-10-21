@@ -7,7 +7,7 @@ let seeking = false;
 
 function setRangeFill(el) { const p = ((el.value - el.min) / (el.max - el.min)) * 100; el.style.setProperty('--p', p + '%'); }
 // in attesa del buffer dopo uno scatto il video è fermo, ma per l'utente sta riproducendo
-const isPaused = () => video.paused && !P.rebuffering;
+const isPaused = () => (mpvActive() ? M.paused : video.paused && !P.rebuffering);
 function updatePlayButton() {
   $('btn-play').innerHTML = isPaused() || !S.current ? ICONS.play : ICONS.pause;
   rowsLayer.querySelectorAll('.eq').forEach((e) => e.classList.toggle('paused', isPaused()));
@@ -20,7 +20,8 @@ function updateVolumeUi() {
 function updateTimeUi() {
   if (!S.current) { $('time').textContent = ''; return; }
   if (S.currentMode === 'live') {
-    $('time').textContent = video.currentTime ? fmtTime(video.currentTime) : '';
+    const t = mpvActive() ? M.time : video.currentTime;
+    $('time').textContent = t ? fmtTime(t) : '';
     return;
   }
   const d = currentDuration(), c = currentPlayTime();
@@ -30,6 +31,7 @@ function updateTimeUi() {
 
 function togglePlay() {
   if (!S.current) return;
+  if (mpvActive()) { mpvTogglePause(); return; }
   if (P.rebuffering) {
     // pausa durante l'attesa del buffer: resta fermo, senza ripartire da solo
     stopRebuffer();
@@ -53,6 +55,7 @@ function toggleFullscreen() {
   else wrap.requestFullscreen().catch(() => {});
 }
 function togglePip() {
+  if (mpvActive()) { toast('Picture in Picture non disponibile con il motore mpv: passa al motore del browser nelle impostazioni', 'info'); return; }
   (async () => {
     try {
       if (document.pictureInPictureElement) await document.exitPictureInPicture();
@@ -130,7 +133,7 @@ function renderTracksMenu() {
   const waiting = live ? 'Lettura delle tracce dallo stream…' : (S.caps.ffprobe ? 'Analisi delle tracce del file…' : 'Elenco delle tracce non disponibile senza ffmpeg');
   const empty = t.from === 'hls' ? 'Non disponibile in HLS: scegli "Auto" nelle impostazioni'
     : t.from === 'none' ? 'Elenco delle tracce non disponibile' : t.from ? 'Nessuna traccia' : waiting;
-  const listed = t.from === 'ts' || t.from === 'probe';
+  const listed = t.from === 'ts' || t.from === 'probe' || t.from === 'mpv';
   const note = (msg) => `<p class="px-2 py-1 text-xs text-ink-subtle">${escapeHtml(msg)}</p>`;
   let html = '<p class="overline px-2 py-1">Audio</p>';
   if (t.audio.length) {
@@ -142,7 +145,7 @@ function renderTracksMenu() {
   if (t.subs.length) {
     html += t.subs.map((s, i) => {
       // i sottotitoli a immagine (DVB, PGS, DVD) e quelli dei live non si possono mostrare
-      const ok = s.text && !live;
+      const ok = t.from === 'mpv' || (s.text && !live);
       return trackOpt(`data-sub="${i}"`, XPCore.trackLabel(s), P.subIndex === i, ok ? '' : (s.text ? 'solo film' : 'immagine, non disponibile'), !ok);
     }).join('');
   } else if (!listed) html += note(empty);
@@ -189,7 +192,7 @@ function fillLangSelect(sel, value, noneLabel) {
 }
 function renderSettings() {
   const st = S.settings;
-  const segValue = { lat: L.mode, fmt: S.liveFormat, audioOut: st.audioOut, quality: st.quality, external: st.external };
+  const segValue = { lat: L.mode, fmt: S.liveFormat, audioOut: st.audioOut, quality: st.quality, external: st.external, engine: useMpv() ? 'mpv' : 'web' };
   document.querySelectorAll('#settings-panel .seg').forEach((g) => {
     g.querySelectorAll('button').forEach((b) => {
       const on = b.dataset.v === segValue[g.dataset.setting];
@@ -197,6 +200,10 @@ function renderSettings() {
       b.setAttribute('aria-checked', String(on));
     });
   });
+  $('set-engine-mpv').disabled = !M.available;
+  $('set-engine-help').textContent = M.available
+    ? 'mpv: decodifica hardware, nessuna conversione, buffer stabile. Browser: il motore precedente, con Picture in Picture.'
+    : 'libmpv-2.dll non trovata: si usa il motore del browser. Reinstalla l\'app per avere mpv.';
   fillLangSelect($('set-audio-lang'), st.audioLang, 'Nessuna preferenza');
   fillLangSelect($('set-sub-lang'), st.subLang, 'Disattivati');
   const c = S.caps || {};
@@ -234,7 +241,7 @@ $('settings-panel').addEventListener('click', (ev) => {
     L.mode = LAT_PRESETS[v] ? v : LAT_DEFAULT;
     lsSet('xp.latMode', L.mode);
     latLoad();
-    if (S.current && S.currentMode === 'live' && P.hls) playItem(S.current, 'live');
+    if (S.current && S.currentMode === 'live' && (P.hls || mpvActive())) playItem(S.current, 'live');
     updateLatencyUi(true);
   } else if (key === 'fmt') {
     S.liveFormat = ['ts', 'm3u8', 'ffmpeg'].includes(v) ? v : 'ts';
@@ -243,9 +250,15 @@ $('settings-panel').addEventListener('click', (ev) => {
     if (S.current && S.currentMode === 'live') playItem(S.current, 'live');
   } else if (key in S.settings) {
     if (S.settings[key] === v) return;
+    if (key === 'engine' && v === 'mpv' && !M.available) return;
+    // posizione letta prima del cambio: dopo, il motore attivo è un altro
+    const resume = S.current && S.currentMode === 'vod' ? { ss: currentPlayTime(), duration: currentDuration() } : {};
+    const wasMpv = mpvActive();
     S.settings = XPCore.normalizeSettings({ ...S.settings, [key]: v });
     saveSettings();
-    if (key === 'audioOut' || key === 'quality') restartIfTranscoding();
+    if (key === 'engine' && S.current) playItem(S.current, S.currentMode, { keepRetries: true, ...resume });
+    else if (key === 'audioOut' && wasMpv) playItem(S.current, S.currentMode, { keepRetries: true, ...resume });
+    else if (key === 'audioOut' || key === 'quality') restartIfTranscoding();
   }
   renderSettings();
 });
@@ -293,10 +306,10 @@ let idleTimer = null;
 function poke() {
   wrap.classList.remove('idle');
   clearTimeout(idleTimer);
-  idleTimer = setTimeout(() => { if (!video.paused && S.current && !tracksMenuOpen()) wrap.classList.add('idle'); }, 3000);
+  idleTimer = setTimeout(() => { if (!isPaused() && S.current && !tracksMenuOpen()) wrap.classList.add('idle'); }, 3000);
 }
 wrap.addEventListener('mousemove', poke);
-wrap.addEventListener('mouseleave', () => { if (!video.paused && S.current && !tracksMenuOpen()) wrap.classList.add('idle'); });
+wrap.addEventListener('mouseleave', () => { if (!isPaused() && S.current && !tracksMenuOpen()) wrap.classList.add('idle'); });
 video.addEventListener('pause', () => wrap.classList.remove('idle'));
 
 // ------------------------------------------------------------------ azioni info

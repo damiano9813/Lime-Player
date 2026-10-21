@@ -28,6 +28,9 @@ tauri-plugin-updater = { version = "2", default-features = false, features = ["n
 tauri-plugin-single-instance = "2"
 # dimensione, posizione e stato massimizzato della finestra tra un avvio e l'altro
 tauri-plugin-window-state = "2"
+# motore di riproduzione integrato: libmpv caricata a runtime, video in una finestra figlia nativa
+libloading = "0.7"
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_System_LibraryLoader", "Win32_UI_WindowsAndMessaging"] }
 
 [dev-dependencies]
 # risposte HTTP finte per i test della riconnessione live (già usato da reqwest)

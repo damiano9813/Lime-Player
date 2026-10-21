@@ -7,6 +7,7 @@ mod creds;
 mod external;
 mod guide;
 mod media;
+mod mpv;
 mod proxy;
 mod state;
 mod transcode;
@@ -89,6 +90,12 @@ fn main() {
             external::open_in_external_player,
             media::get_media_capabilities,
             media::probe_stream,
+            mpv::mpv_available,
+            mpv::mpv_load,
+            mpv::mpv_stop,
+            mpv::mpv_set,
+            mpv::mpv_seek,
+            mpv::mpv_set_rect,
             cache::clear_list_cache,
             cache::clear_account_cache,
             catalog::get_short_epg,

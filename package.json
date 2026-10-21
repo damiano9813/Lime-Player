@@ -8,7 +8,8 @@
     "vendor": "node scripts/vendor.mjs",
     "build:css": "tailwindcss -c tailwind.config.js -i tailwind.css -o ui/vendor/app.css --minify",
     "build:ui": "npm run vendor && npm run build:css",
-    "fetch:ffmpeg": "node scripts/fetch-ffmpeg.mjs"
+    "fetch:ffmpeg": "node scripts/fetch-ffmpeg.mjs",
+    "fetch:mpv": "node scripts/fetch-mpv.mjs"
   },
   "devDependencies": {
     "@fontsource-variable/manrope": "5.2.8",

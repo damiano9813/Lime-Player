@@ -60,7 +60,7 @@ function getSavedRoute(id) { return XPCore.normalizeSavedRoute(lsGet(routeKey(id
 function saveRoute(id, r) { lsSet(routeKey(id), { v: r.v, a: r.a, at: r.at || 0, t: Date.now() }); }
 
 // --- tracce audio e sottotitoli ---
-const currentAudioIndex = () => (P.route.mode === 'transcode' && P.route.at > 0 ? P.route.at : 0);
+const currentAudioIndex = () => (mpvActive() ? M.aid : P.route.mode === 'transcode' && P.route.at > 0 ? P.route.at : 0);
 function resetTracks() {
   clearInterval(P.tracksTimer); P.tracksTimer = null;
   P.tracks = { from: '', audio: [], subs: [] };
@@ -108,6 +108,8 @@ function applyPreferredTracks(item) {
 function selectAudio(track, auto) {
   const item = S.current, mode = S.currentMode;
   if (!item || !track || track.index === currentAudioIndex()) return;
+  // mpv cambia traccia al volo, senza conversioni né riavvii
+  if (mpvActive()) { mpvSetAudio(track); return; }
   if (!S.caps.ffmpeg) { toast('Per cambiare traccia audio serve ffmpeg (winget install Gyan.FFmpeg)', 'error'); return; }
   const route = XPCore.audioTrackRoute(P.route, track, { opusOk: OPUS_OK, forceTranscode: mode === 'vod' && P.vodTranscoded });
   toast(`${auto ? 'Lingua preferita' : 'Audio'}: ${XPCore.trackLabel(track)}`);
@@ -129,6 +131,7 @@ function clearSubtitleElements() { video.querySelectorAll('track').forEach((t) =
 const textSubIndices = () => P.tracks.subs.filter((t) => t.text).map((t) => t.index);
 const maxConnections = () => parseInt(S.account && S.account.max_connections, 10) || 1;
 function setSubtitle(idx) {
+  if (mpvActive()) { mpvSetSub(idx); return; }
   const t = idx >= 0 ? P.tracks.subs[idx] : null;
   if (t && (!t.text || S.currentMode !== 'vod')) return;
   P.subIndex = t ? idx : -1;
@@ -355,7 +358,9 @@ function updateLatencyUi(force) {
     (L.stalls ? ` · ${L.stalls} scatt${L.stalls === 1 ? 'o' : 'i'}` : '');
 }
 
-function destroyPlayer() {
+// `keepMpv`: il prossimo contenuto parte in mpv, che lo sostituisce senza nascondere il video
+function destroyPlayer(keepMpv) {
+  if (!keepMpv) mpvStop();
   clearTimeout(P.retryTimer); P.retryTimer = null;
   clearInterval(P.watchdog); P.watchdog = null;
   clearTimeout(P.healthTimer); P.healthTimer = null;
@@ -497,6 +502,7 @@ function updateFavButton() {
 
 function updateTech() {
   if (!S.current) { $('info-tech').textContent = ''; return; }
+  if (mpvActive()) { $('info-tech').textContent = mpvTech(); return; }
   const bits = [];
   const tr = P.route.mode === 'transcode';
   if (S.currentMode === 'live') {
@@ -518,7 +524,7 @@ function updateTech() {
 
 function playItem(item, mode, opts) {
   opts = opts || {};
-  destroyPlayer();
+  destroyPlayer(useMpv());
   hideError();
   setHint('');
   // per il tasto "canale precedente": si ricorda l'ultimo contenuto diverso da quello nuovo
@@ -545,7 +551,8 @@ function playItem(item, mode, opts) {
   renderList(true);
   updateLocateButton();
   setSpinner(true);
-  if (mode === 'live') startLive(item, opts.fmt || S.liveFormat, opts.route);
+  if (useMpv()) startMpv(item, mode, opts);
+  else if (mode === 'live') startLive(item, opts.fmt || S.liveFormat, opts.route);
   else startVod(item, opts);
 }
 
@@ -908,8 +915,8 @@ function startVodTranscoded(item, url, route, ss, duration, announce) {
   if (P.subIndex >= 0) setSubtitle(P.subIndex);
 }
 
-function currentPlayTime() { return P.vodTranscoded ? P.vodOffset + video.currentTime : video.currentTime; }
-function currentDuration() { return P.vodTranscoded ? P.vodDuration : video.duration; }
+function currentPlayTime() { return mpvActive() ? M.time : P.vodTranscoded ? P.vodOffset + video.currentTime : video.currentTime; }
+function currentDuration() { return mpvActive() ? M.duration : P.vodTranscoded ? P.vodDuration : video.duration; }
 
 const restartTranscodedAt = debounce((t) => {
   if (!S.current || S.currentMode !== 'vod' || !P.vodTranscoded) return;
@@ -920,6 +927,7 @@ function seekTo(t) {
   if (!S.current || S.currentMode !== 'vod') return;
   const d = currentDuration();
   t = Math.max(0, isFinite(d) && d > 0 ? Math.min(d - 1, t) : t);
+  if (mpvActive()) { mpvSeek(t); return; }
   if (!P.vodTranscoded) { video.currentTime = t; return; }
   // nel buffer già scaricato si salta subito, altrimenti ffmpeg riparte dal punto scelto
   const rel = t - P.vodOffset, b = video.buffered;

@@ -40,11 +40,14 @@ jobs:
       - name: ffmpeg per il bundle
         run: npm run fetch:ffmpeg
 
+      - name: mpv per il bundle
+        run: npm run fetch:mpv
+
       - name: Test Rust
         working-directory: src-tauri
         run: cargo test
 
-      # beforeBuildCommand scarica ffmpeg (già presente dal passo precedente) e compila la UI
+      # beforeBuildCommand scarica ffmpeg e mpv (già presenti dai passi precedenti) e compila la UI
       - uses: tauri-apps/tauri-action@v1
         id: tauri
         env:

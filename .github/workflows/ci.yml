@@ -43,9 +43,12 @@ jobs:
       - name: Test frontend
         run: npm test
 
-      # tauri-build vuole i file di bundle.externalBin anche per compilare
+      # tauri-build vuole i file di bundle.externalBin e bundle.resources anche per compilare
       - name: ffmpeg per il build
         run: npm run fetch:ffmpeg
+
+      - name: mpv per il build
+        run: npm run fetch:mpv
 
       - name: Formattazione Rust
         working-directory: src-tauri

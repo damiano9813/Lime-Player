@@ -154,6 +154,8 @@ async function init() {
     toast('Librerie video mancanti: esegui "npm run build:ui" nella cartella del progetto.', 'error');
   }
   try { S.proxy = await invoke('get_proxy_info'); } catch (e) { toast('Proxy locale non disponibile: ' + errText(e), 'error'); }
+  // motore mpv: prima del login, così il primo canale parte già nel motore giusto
+  await initMpv();
   // la rilevazione di ffmpeg/encoder prova davvero la GPU: non blocca il login
   invoke('get_media_capabilities').then((c) => { S.caps = c; renderCaps(); }).catch(() => { renderCaps(); });
   if (TAURI.app && TAURI.app.getVersion) TAURI.app.getVersion().then((v) => { $('set-version').textContent = `Versione installata: ${v}`; }).catch(() => {});

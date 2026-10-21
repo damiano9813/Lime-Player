@@ -128,9 +128,21 @@
   @media (prefers-reduced-motion: reduce) { .spin, .eq i, .badge-dot, .animate-pulse { animation: none !important; } }
   /* il JS mostra e nasconde con "hidden": deve vincere sul display dei componenti qui sopra */
   .hidden { display: none !important; }
+  /* motore mpv: il video lo disegna una finestra nativa sotto la pagina, che sul rettangolo del
+     player resta trasparente; #mpv-backdrop dipinge lo sfondo tutto intorno (06b-mpv.js) */
+  html.engine-mpv, html.engine-mpv body { background: transparent; }
+  #mpv-backdrop { display: none; position: fixed; z-index: -1; pointer-events: none; box-shadow: 0 0 0 200vmax var(--surface-100); }
+  html.engine-mpv #mpv-backdrop { display: block; }
+  #player-wrap.mpv-on, #player-wrap.mpv-on:fullscreen { background: transparent; }
+  #player-wrap.mpv-on #video { visibility: hidden; }
+  #player-wrap.mpv-on::backdrop { background: transparent; }
+  /* schermo intero con mpv: si vede solo il player, come con il motore del browser */
+  html.mpv-full body *:not(#player-wrap, #player-wrap *) { visibility: hidden; }
+  html.mpv-full #player-wrap { visibility: visible; }
 </style>
 </head>
 <body class="h-full bg-s1 text-ink font-sans overflow-hidden antialiased">
+<div id="mpv-backdrop" aria-hidden="true"></div>
 
 <!-- ============================ LOGIN ============================ -->
 <div id="login-view" class="h-full flex items-center justify-center p-6 bg-[radial-gradient(ellipse_at_top,rgba(245,165,36,0.10),transparent_55%)]">
@@ -502,6 +514,16 @@
     </div>
     <div class="overflow-y-auto px-5 py-4 space-y-5 text-sm">
       <section class="space-y-3">
+        <p class="overline">Riproduzione</p>
+        <div class="set-row">
+          <div><p class="font-bold text-ink">Motore</p><p id="set-engine-help" class="set-help"></p></div>
+          <div class="seg" data-setting="engine" role="radiogroup" aria-label="Motore di riproduzione">
+            <button id="set-engine-mpv" data-v="mpv" role="radio">mpv</button><button data-v="web" role="radio">Browser</button>
+          </div>
+        </div>
+      </section>
+      <div class="h-px bg-line"></div>
+      <section class="space-y-3">
         <p class="overline">Canali live</p>
         <div class="set-row">
           <div><p class="font-bold text-ink">Buffer</p><p class="set-help">Minimo e Medio si adattano alle pause del provider. Stabile: avvio immediato, 10–30 s dietro la diretta.</p></div>
@@ -577,6 +599,7 @@
 <script src="js/04-library.js"></script>
 <script src="js/05-list.js"></script>
 <script src="js/06-player.js"></script>
+<script src="js/06b-mpv.js"></script>
 <script src="js/07-controls.js"></script>
 <script src="js/08-content.js"></script>
 <script src="js/09-guide.js"></script>

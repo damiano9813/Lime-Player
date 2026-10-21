@@ -5273,6 +5273,7 @@ dependencies = [
  "futures-util",
  "http",
  "keyring",
+ "libloading",
  "quick-xml",
  "reqwest 0.12.28",
  "serde",
@@ -5283,6 +5284,7 @@ dependencies = [
  "tauri-plugin-updater",
  "tauri-plugin-window-state",
  "tokio",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

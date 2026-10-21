@@ -403,9 +403,35 @@ test('percorso per ascoltare un\'altra traccia audio', () => {
 
 test('impostazioni: valori ammessi e predefiniti', () => {
   assert.deepEqual(X.normalizeSettings(null), X.SETTINGS_DEFAULTS);
-  assert.deepEqual(X.normalizeSettings({ audioOut: 'orig', quality: 'high', audioLang: 'IT', subLang: 'eng', external: 'vlc' }),
-    { audioOut: 'orig', quality: 'high', audioLang: 'ita', subLang: 'eng', external: 'vlc' });
-  assert.deepEqual(X.normalizeSettings({ audioOut: '7.1', quality: 'ultra', audioLang: 'und', external: 'kodi', extra: 1 }), X.SETTINGS_DEFAULTS);
+  assert.deepEqual(X.normalizeSettings({ audioOut: 'orig', quality: 'high', audioLang: 'IT', subLang: 'eng', external: 'vlc', engine: 'web' }),
+    { audioOut: 'orig', quality: 'high', audioLang: 'ita', subLang: 'eng', external: 'vlc', engine: 'web' });
+  assert.deepEqual(X.normalizeSettings({ audioOut: '7.1', quality: 'ultra', audioLang: 'und', external: 'kodi', engine: 'vlc', extra: 1 }), X.SETTINGS_DEFAULTS);
+  // le impostazioni salvate prima del motore mpv lo ricevono come predefinito
+  assert.equal(X.normalizeSettings({ quality: 'fast' }).engine, 'mpv');
+});
+
+test('mpv: tracce da track-list e cache del live', () => {
+  const t = X.mpvTracks([
+    { id: 1, type: 'video', codec: 'h264', selected: true },
+    { id: 1, type: 'audio', lang: 'ita', codec: 'ac3', 'demux-channel-count': 6, default: true },
+    { id: 2, type: 'audio', lang: 'eng', codec: 'aac', 'demux-channel-count': 2, title: 'Commento', selected: true },
+    { id: 1, type: 'sub', lang: 'ita', codec: 'hdmv_pgs_subtitle', forced: true, selected: true },
+    { id: 2, type: 'sub', lang: 'eng', codec: 'subrip' },
+    null,
+  ]);
+  assert.deepEqual(t.audio.map((a) => [a.index, a.lang, a.channels, a.default]), [[1, 'ita', 6, true], [2, 'eng', 2, false]]);
+  assert.equal(t.aid, 2);
+  assert.equal(t.sid, 1);
+  // mpv disegna anche i sottotitoli a immagine
+  assert.ok(t.subs.every((s) => s.text));
+  assert.equal(t.subs[0].forced, true);
+  assert.equal(X.trackLabel(t.audio[1]), 'Inglese · AAC stereo · Commento');
+  assert.equal(X.pickTrack(t.audio, 'ita'), 0);
+  assert.deepEqual(X.mpvTracks(undefined), { audio: [], subs: [], aid: 0, sid: 0 });
+  assert.equal(X.mpvCacheSecs('min'), 1);
+  assert.equal(X.mpvCacheSecs('bal'), 2);
+  assert.equal(X.mpvCacheSecs('stable'), 4);
+  assert.equal(X.mpvCacheSecs('???'), 4);
 });
 
 test('dati per account: id stabile e chiavi separate', () => {

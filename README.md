@@ -6,8 +6,9 @@ Player IPTV desktop per Windows compatibile con le API Xtream Codes.
 
 ```
 Lime-Player/
-├─ package.json                  script `npm test`, `npm run fetch:ffmpeg`
+├─ package.json                  script `npm test`, `npm run fetch:ffmpeg`, `npm run fetch:mpv`
 ├─ scripts/fetch-ffmpeg.mjs      scarica ffmpeg/ffprobe LGPL (versione fissata, SHA-256)
+├─ scripts/fetch-mpv.mjs         scarica libmpv-2.dll (versione fissata, SHA-256)
 ├─ scripts/fix-updater-json.mjs  link di download diretti in latest.json (workflow di release)
 ├─ tests/core.test.js            test della logica pura del frontend (node --test)
 ├─ ui/
@@ -20,7 +21,8 @@ Lime-Player/
 │     ├─ 03-login.js             playlist salvate, accesso, cambio di playlist, account
 │     ├─ 04-library.js           Live/Film, categorie, liste, ricerca, preferiti, recenti
 │     ├─ 05-list.js              lista virtualizzata
-│     ├─ 06-player.js            player, conversione ffmpeg, buffer adattivo
+│     ├─ 06-player.js            player del browser, conversione ffmpeg, buffer adattivo
+│     ├─ 06b-mpv.js              motore mpv: rettangolo del video, comandi, eventi
 │     ├─ 07-controls.js          controlli del player e pannello info
 │     ├─ 08-content.js           guida TV, serie ed episodi, catch-up, scheda film
 │     ├─ 09-guide.js             guida TV a griglia
@@ -39,6 +41,7 @@ Lime-Player/
       ├─ updater.rs              aggiornamenti dalle release GitHub
       ├─ proxy.rs                proxy locale (CORS, Range, playlist HLS)
       ├─ media.rs                rilevamento ffmpeg/encoder, ffprobe, argomenti
+      ├─ mpv.rs                  motore mpv: libmpv, finestra del video, eventi
       ├─ transcode.rs            percorso di conversione ffmpeg
       ├─ ts.rs                   PCR MPEG-TS e salto della raffica iniziale
       ├─ external.rs             player esterni
@@ -52,6 +55,7 @@ globale; `core.js` non tocca DOM né Tauri e viene usato anche dai test.
 
 ```powershell
 npm run fetch:ffmpeg   # una volta: tauri-build vuole i file di bundle.externalBin
+npm run fetch:mpv      # una volta: e quelli di bundle.resources
 npm test
 cd src-tauri
 cargo test
@@ -177,6 +181,30 @@ aggiornata. Nelle Impostazioni, "Cerca aggiornamenti" ripete il controllo.
     }
   }
   ```
+
+## Motore mpv
+
+Il player integrato usa **mpv** (`libmpv-2.dll`, build di
+[shinchiro/mpv-winbuild-cmake](https://github.com/shinchiro/mpv-winbuild-cmake), GPL; release,
+archivio e SHA-256 fissati in `scripts/fetch-mpv.mjs`, circa 30 MB scaricati una volta). La DLL
+si carica a runtime (`src-tauri/src/mpv.rs`): mpv disegna il video in una finestra nativa figlia
+della finestra principale, sotto WebView2. Solo la WebView ha lo sfondo trasparente
+(`backgroundColor` con alfa 0 in `tauri.conf.json`: su Windows l'alfa vale per la WebView, non per
+la finestra, che con `transparent` mostrerebbe il desktop al posto del video). La finestra del video
+non ha `WS_CLIPSIBLINGS`, altrimenti la WebView sopra la nasconderebbe del tutto. La pagina lascia
+trasparente solo il rettangolo del player e `#mpv-backdrop` dipinge lo sfondo tutto intorno, quindi
+controlli, OSD, menu e finestre di dialogo HTML restano sopra il video. Il rettangolo segue ridimensionamenti, scroll, modalità cinema e schermo intero.
+
+mpv legge direttamente l'URL del provider (User-Agent `IPTVSmartersPro`, riconnessione
+automatica), decodifica in hardware, cambia tracce audio e sottotitoli senza riavvii (anche i
+sottotitoli a immagine e quelli dei live) e non ha bisogno di proxy, conversione ffmpeg o buffer
+adattivo. Il buffer del live dipende dal preset: Minimo 1 s, Medio 2 s, Stabile 4 s. Il motore
+precedente (mpegts.js/hls.js nel browser) resta nelle Impostazioni ("Motore: Browser") ed è
+l'unico con il Picture in Picture; si usa da solo se la DLL manca.
+
+Le build di shinchiro restano online circa due mesi: quando quella fissata sparisce,
+`npm run fetch:mpv` fallisce e va aggiornata con una più recente (archivio `mpv-dev-x86_64`
+senza `-v3`, che richiederebbe AVX2), cambiando `RELEASE`, `ARCHIVE` e `SHA256`.
 
 ## ffmpeg e licenza
 
