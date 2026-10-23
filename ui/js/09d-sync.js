@@ -255,10 +255,14 @@ async function enableSync(code) {
   }
   await invoke('save_sync_code', { code: keys.code });
   resetSyncState();
-  await syncNow(false);
-  if (SY.error) throw new Error(SY.error);
+  // gruppo raggiunto e codice salvato: la sincronizzazione è attiva anche se il primo giro non
+  // riesce (rete lenta, app occupata); il ciclo riprova da solo. Restituisce l'errore del primo giro.
   startSyncLoop();
+  await syncNow(false);
+  if (SY.error) syncSoon(15000);
+  return SY.error;
 }
+const firstSyncNote = (err) => { if (err) toast(`Sincronizzazione attiva, ma il primo invio non è riuscito (${err}): riprovo tra poco`, 'error'); };
 
 async function disableSync(wipe) {
   if (wipe && SY.keys) await rpc('xp_delete', auth());
@@ -330,8 +334,9 @@ async function receivePairing() {
     [{ label: 'Annulla', value: false }, { label: 'Collega', value: true, primary: true }]);
   if (!ok) return;
   try {
-    await enableSync(payload.code);
-    toast('Dispositivo collegato: playlist e preferiti sincronizzati', 'ok');
+    const err = await enableSync(payload.code);
+    if (err) firstSyncNote(err);
+    else toast('Dispositivo collegato: playlist e preferiti sincronizzati', 'ok');
     // dalla schermata delle playlist: si mostra l'elenco con quelle appena arrivate
     if (!$('login-view').classList.contains('hidden') && accounts.length) {
       setFormOpen(false);
@@ -374,7 +379,11 @@ async function startSyncFlow() {
       { label: 'Ricevi da un altro dispositivo', value: 'pair' }, { label: 'Nuovo gruppo', value: 'new', primary: true }]);
   if (choice === 'pair') { receivePairing(); return; }
   if (choice === 'new') {
-    try { await enableSync(XPSync.newSyncCode()); toast('Sincronizzazione attiva', 'ok'); showSyncCode(); } catch (e) { toast('Attivazione non riuscita: ' + errText(e), 'error'); }
+    try {
+      const err = await enableSync(XPSync.newSyncCode());
+      if (err) firstSyncNote(err); else toast('Sincronizzazione attiva', 'ok');
+      showSyncCode();
+    } catch (e) { toast('Attivazione non riuscita: ' + errText(e), 'error'); }
     return;
   }
   if (choice === 'code') {
@@ -385,7 +394,10 @@ async function startSyncFlow() {
     if (!ok) return;
     const parsed = XPSync.parseSyncCode($('sync-code-input') && $('sync-code-input').value);
     if (!parsed) { toast('Codice non valido: sono 32 caratteri', 'error'); return; }
-    try { await enableSync(parsed.code); toast('Sincronizzazione attiva', 'ok'); } catch (e) { toast('Attivazione non riuscita: ' + errText(e), 'error'); }
+    try {
+      const err = await enableSync(parsed.code);
+      if (err) firstSyncNote(err); else toast('Sincronizzazione attiva', 'ok');
+    } catch (e) { toast('Attivazione non riuscita: ' + errText(e), 'error'); }
   }
 }
 
