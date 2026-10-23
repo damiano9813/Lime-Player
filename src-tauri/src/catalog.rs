@@ -10,12 +10,13 @@ use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use tauri::ipc::Response;
 use tauri::{AppHandle, State};
 
-use crate::cache::{load_list, CacheKey, Listing};
+use crate::cache::{load_list, CacheKey};
 use crate::state::AppState;
 use crate::xtream::{
-    api_get, field, flex_f64, flex_string, normalize_server, parse_list, value_to_string,
+    api_get, field, flex_f64, flex_string, is_zero, normalize_server, parse_list, value_to_string,
 };
 
 /// Le risposte di guida, serie e film restano valide 10 minuti in memoria.
@@ -195,10 +196,15 @@ pub async fn get_epg_day(
 
 /// Una serie con gli stessi nomi di campo dei canali e dei film, così la lista
 /// virtualizzata la mostra senza casi speciali. `alias` permette di rileggere sia la
-/// risposta del server sia la copia salvata in cache.
+/// risposta del server sia la copia salvata in cache; come per `StreamItem` i campi vuoti
+/// non si scrivono.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SeriesItem {
-    #[serde(default, deserialize_with = "flex_string")]
+    #[serde(
+        default,
+        deserialize_with = "flex_string",
+        skip_serializing_if = "String::is_empty"
+    )]
     pub num: String,
     #[serde(default, deserialize_with = "flex_string")]
     pub name: String,
@@ -213,25 +219,47 @@ pub struct SeriesItem {
         rename = "stream_icon",
         alias = "cover",
         default,
-        deserialize_with = "flex_string"
+        deserialize_with = "flex_string",
+        skip_serializing_if = "String::is_empty"
     )]
     pub stream_icon: String,
-    #[serde(default, deserialize_with = "flex_string")]
+    #[serde(
+        default,
+        deserialize_with = "flex_string",
+        skip_serializing_if = "String::is_empty"
+    )]
     pub category_id: String,
-    #[serde(default, deserialize_with = "flex_f64")]
+    #[serde(
+        default,
+        deserialize_with = "flex_f64",
+        skip_serializing_if = "is_zero"
+    )]
     pub rating: f64,
-    #[serde(default, deserialize_with = "flex_string")]
+    #[serde(
+        default,
+        deserialize_with = "flex_string",
+        skip_serializing_if = "String::is_empty"
+    )]
     pub plot: String,
-    #[serde(default, deserialize_with = "flex_string")]
+    #[serde(
+        default,
+        deserialize_with = "flex_string",
+        skip_serializing_if = "String::is_empty"
+    )]
     pub genre: String,
     #[serde(
         rename = "release_date",
         alias = "releaseDate",
         default,
-        deserialize_with = "flex_string"
+        deserialize_with = "flex_string",
+        skip_serializing_if = "String::is_empty"
     )]
     pub release_date: String,
-    #[serde(default, deserialize_with = "flex_string")]
+    #[serde(
+        default,
+        deserialize_with = "flex_string",
+        skip_serializing_if = "String::is_empty"
+    )]
     pub last_modified: String,
 }
 
@@ -244,7 +272,7 @@ pub async fn get_series_list(
     password: String,
     category_id: String,
     cache: Option<String>,
-) -> Result<Listing<SeriesItem>, String> {
+) -> Result<Response, String> {
     let server = normalize_server(&server)?;
     let cat = category_id.trim().to_string();
     let cat = if cat == "all" || cat == "*" {

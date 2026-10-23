@@ -127,6 +127,12 @@ function prepareItems(items) {
 // più categorie insieme: si filtra la lista completa, nell'ordine delle categorie del provider
 const multiCatItems = (mode, all) => XPCore.itemsInCategories(all, S.categories[mode], S.multiCats[mode]);
 
+// elementi di una categoria ('' = tutti) dal backend: { items, from_cache, fetched_at }
+function invokeList(creds, mode, categoryId, cache) {
+  const args = { ...creds, categoryId, cache };
+  return mode === 'series' ? invoke('get_series_list', args) : invoke('get_streams', { ...args, mode: MODE_API[mode].streams });
+}
+
 async function loadStreams(mode, catId, forceReload) {
   const seq = ++S.loadSeq;
   const acct = S.acct;
@@ -148,11 +154,8 @@ async function loadStreams(mode, catId, forceReload) {
       renderList(true);
       showListState('loading');
       try {
-        // con "prefer" la lista salvata su disco arriva subito; quella aggiornata con l'evento list-updated
-        const args = { ...S.creds, categoryId: listId === ALL ? '' : listId, cache: forceReload ? 'refresh' : 'prefer' };
-        const res = mode === 'series'
-          ? await invoke('get_series_list', args)
-          : await invoke('get_streams', { ...args, mode: MODE_API[mode].streams });
+        // con "prefer" la lista salvata su disco arriva subito; quella aggiornata dopo l'evento list-updated
+        const res = await invokeList(S.creds, mode, listId === ALL ? '' : listId, forceReload ? 'refresh' : 'prefer');
         if (S.acct !== acct) return;
         items = prepareItems(res.items);
         S.cache.set(key, items);
@@ -175,14 +178,36 @@ function setListAge(fetchedAt) {
   $('list-count').title = fetchedAt ? 'Lista aggiornata il ' + new Date(fetchedAt * 1000).toLocaleString('it-IT') : '';
 }
 
-// La lista salvata su disco è stata riscaricata in background (evento "list-updated"):
-// si sostituisce senza perdere scroll, ricerca e contenuto in riproduzione.
+const modeOfAction = (action) => MODES.find((m) => MODE_API[m].streams === action || MODE_API[m].cats === action);
+const whenIdle = () => new Promise((r) => (window.requestIdleCallback ? requestIdleCallback(r, { timeout: 2000 }) : setTimeout(r, 50)));
+let listReads = Promise.resolve();
+
+// Evento "list-updated": il backend ha riscaricato e salvato in background una lista e dice solo
+// quale (un evento con decine di MB di elementi bloccava la finestra). La lista, se è in memoria,
+// si rilegge dal disco: una alla volta e quando la pagina è libera.
 function onListUpdated(p) {
   if (!S.creds || !p) return;
   // aggiornamento partito prima di un cambio di playlist
   if (p.server !== S.creds.server || p.username !== S.creds.username) return;
-  const mode = Object.keys(MODE_API).find((m) => MODE_API[m].streams === p.action || MODE_API[m].cats === p.action);
+  const mode = modeOfAction(p.action);
   if (!mode) return;
+  const cats = MODE_API[mode].cats === p.action;
+  // lista non ancora caricata: quando servirà arriverà già aggiornata
+  if (cats ? !S.categories[mode] : !S.cache.has(mode + '|' + (p.category_id || ALL))) return;
+  const acct = S.acct, creds = S.creds;
+  listReads = listReads.then(whenIdle).then(async () => {
+    if (S.acct !== acct) return;
+    const res = cats ? await invoke('get_categories', { ...creds, mode: p.action, cache: 'prefer' })
+      : await invokeList(creds, mode, p.category_id, 'prefer');
+    await whenIdle();
+    if (S.acct === acct) applyListUpdate({ ...p, items: res.items, fetched_at: res.fetched_at });
+  }).catch(() => {});
+}
+
+// Lista riscaricata (in background o da refreshLists): si sostituisce senza perdere scroll,
+// ricerca e contenuto in riproduzione.
+function applyListUpdate(p) {
+  const mode = modeOfAction(p.action);
   if (MODE_API[mode].cats === p.action) {
     S.categories[mode] = p.items;
     S.catNames[mode] = new Map(p.items.map((c) => [c.category_id, c.category_name]));
@@ -296,7 +321,7 @@ function refreshLists(manual) {
   if (!S.creds) return Promise.resolve(false);
   if (listsJob) return listsJob;
   const acct = S.acct, creds = S.creds;
-  const send = (action, res) => onListUpdated({ server: creds.server, username: creds.username, action, category_id: '', items: res.items, fetched_at: res.fetched_at });
+  const send = (action, res) => applyListUpdate({ action, category_id: '', items: res.items, fetched_at: res.fetched_at });
   // prima la sezione aperta, poi le altre una alla volta (meno carico per il provider e il dispositivo)
   const order = Array.from(new Set([S.view, 'live', 'vod', 'series'])).filter((m) => MODES.includes(m));
   setListsBusy(true);
@@ -307,8 +332,7 @@ function refreshLists(manual) {
         const cats = await invoke('get_categories', { ...creds, mode: MODE_API[mode].cats, cache: 'refresh' });
         if (S.acct !== acct) return false;
         send(MODE_API[mode].cats, cats);
-        const args = { ...creds, categoryId: '', cache: 'refresh' };
-        const res = mode === 'series' ? await invoke('get_series_list', args) : await invoke('get_streams', { ...args, mode: MODE_API[mode].streams });
+        const res = await invokeList(creds, mode, '', 'refresh');
         if (S.acct !== acct) return false;
         send(MODE_API[mode].streams, res);
         delete B.errors[mode];

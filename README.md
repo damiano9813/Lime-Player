@@ -373,7 +373,14 @@ PATH.
 - **Cache delle liste**: categorie e liste vengono salvate in `%LOCALAPPDATA%\com.xtreamplayer.desktop\lists\`.
   All'avvio si mostrano subito quelle salvate (se hanno meno di 24 ore) e si aggiornano in
   background se hanno più di 10 minuti; senza rete si usa comunque l'ultima lista. Rimuovere la
-  playlist cancella anche la sua cache.
+  playlist cancella anche la sua cache. Ogni file è `{"fetched_at": …, "items": […]}`; negli
+  elementi i campi vuoti (e `0` per `rating`) non si scrivono e valgono "" e 0, `stream_type`
+  non si salva. I comandi lista (`get_categories`, `get_streams`, `get_series_list`) mandano alla
+  UI gli elementi del file così come sono, senza ricostruirli. Finito l'aggiornamento in
+  background il backend salva la lista ed emette `list-updated` con solo `server`, `username`,
+  `action`, `category_id` e `fetched_at`: la UI, se ha quella lista in memoria, la rilegge con lo
+  stesso comando quando la pagina è libera. Gli eventi di Tauri arrivano alla pagina come script
+  eseguito sul thread della finestra, quindi non devono portare i cataloghi (decine di MB).
 - **Aggiornamento delle liste**: una volta al giorno l'app riscarica dal provider categorie e liste
   complete di Live TV, film e serie, una sezione alla volta e partendo da quella aperta; le liste
   aperte si aggiornano senza perdere posizione e ricerca. Se l'app era chiusa, il controllo parte

@@ -1,14 +1,21 @@
 //! Cache su disco di categorie e liste: la lista salvata si mostra subito e viene
-//! aggiornata in background; il risultato arriva alla UI con l'evento `list-updated`.
+//! aggiornata in background; quando è pronta la UI riceve l'evento `list-updated` e la rilegge.
+//!
+//! I cataloghi completi arrivano a decine di MB: la lista salvata va alla UI così com'è nel
+//! file, senza ricostruire e riserializzare gli elementi, e l'evento non porta gli elementi
+//! (Tauri consegna gli eventi eseguendo nella pagina uno script con tutto il contenuto, sul
+//! thread della finestra).
 
 use std::collections::HashSet;
+use std::fmt::Write as _;
 use std::future::Future;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use serde_json::value::RawValue;
+use tauri::ipc::Response;
 use tauri::{AppHandle, Emitter, Manager};
 
 /// Oltre questa età la cache non si mostra da sola: si scarica di nuovo (e la si usa
@@ -78,35 +85,23 @@ impl CacheKey {
     }
 }
 
+/// File della cache: `{"fetched_at":…,"items":[…]}`. Gli elementi restano JSON grezzo
+/// (validato, non ricostruito).
 #[derive(Deserialize)]
-struct Entry<T> {
+struct Entry {
     fetched_at: u64,
-    items: Vec<T>,
+    items: Box<RawValue>,
 }
 
-#[derive(Serialize)]
-struct EntryRef<'a, T> {
-    fetched_at: u64,
-    items: &'a [T],
-}
-
-/// Risposta dei comandi lista.
+/// Evento inviato alla UI quando l'aggiornamento in background è salvato: solo quale lista,
+/// la UI la rilegge con lo stesso comando (ora la cache è recente e arriva dal disco).
 #[derive(Debug, Clone, Serialize)]
-pub struct Listing<T> {
-    pub items: Vec<T>,
-    pub from_cache: bool,
-    pub fetched_at: u64,
-}
-
-/// Evento inviato alla UI quando l'aggiornamento in background è pronto.
-#[derive(Debug, Clone, Serialize)]
-struct ListUpdated<T> {
+struct ListUpdated {
     // account della lista: la UI ignora gli aggiornamenti arrivati dopo un cambio di playlist
     server: String,
     username: String,
     action: String,
     category_id: String,
-    items: Vec<T>,
     fetched_at: u64,
 }
 
@@ -132,28 +127,64 @@ fn entry_path(app: &AppHandle, key: &CacheKey) -> Option<PathBuf> {
     lists_dir(app).map(|d| d.join(key.account_hash()).join(key.file_name()))
 }
 
-fn read<T: DeserializeOwned>(app: &AppHandle, key: &CacheKey) -> Option<(u64, Vec<T>)> {
-    let bytes = std::fs::read(entry_path(app, key)?).ok()?;
-    let entry: Entry<T> = serde_json::from_slice(&bytes).ok()?;
-    Some((entry.fetched_at, entry.items))
+/// Lista salvata: data e JSON degli elementi (un array), `None` se manca o non è valida.
+fn read_entry(path: &Path) -> Option<(u64, Box<RawValue>)> {
+    let bytes = std::fs::read(path).ok()?;
+    let entry: Entry = serde_json::from_slice(&bytes).ok()?;
+    entry
+        .items
+        .get()
+        .starts_with('[')
+        .then_some((entry.fetched_at, entry.items))
 }
 
-fn write<T: Serialize>(app: &AppHandle, key: &CacheKey, fetched_at: u64, items: &[T]) {
-    let Some(path) = entry_path(app, key) else {
-        return;
-    };
+/// Salva la lista; `items` è il JSON dell'array degli elementi.
+fn write_entry(path: &Path, fetched_at: u64, items: &str) {
     let Some(dir) = path.parent() else { return };
     if std::fs::create_dir_all(dir).is_err() {
         return;
     }
-    let Ok(bytes) = serde_json::to_vec(&EntryRef { fetched_at, items }) else {
-        return;
-    };
+    let mut body = String::with_capacity(items.len() + 40);
+    let _ = write!(body, "{{\"fetched_at\":{},\"items\":", fetched_at);
+    body.push_str(items);
+    body.push('}');
     // scrittura atomica: un file a metà non viene mai letto
     let tmp = path.with_extension("json.tmp");
-    if std::fs::write(&tmp, bytes).is_ok() {
-        let _ = std::fs::rename(&tmp, &path);
+    if std::fs::write(&tmp, body).is_ok() {
+        let _ = std::fs::rename(&tmp, path);
     }
+}
+
+fn read(app: &AppHandle, key: &CacheKey) -> Option<(u64, Box<RawValue>)> {
+    read_entry(&entry_path(app, key)?)
+}
+
+/// Serializza gli elementi scaricati e li salva; restituisce il loro JSON.
+fn store<T: Serialize>(
+    app: &AppHandle,
+    key: &CacheKey,
+    fetched_at: u64,
+    items: &[T],
+) -> Result<String, String> {
+    let json = serde_json::to_string(items).map_err(|e| e.to_string())?;
+    if let Some(path) = entry_path(app, key) {
+        write_entry(&path, fetched_at, &json);
+    }
+    Ok(json)
+}
+
+/// Risposta dei comandi lista, `{"items":[…],"from_cache":…,"fetched_at":…}`, composta
+/// attorno al JSON degli elementi senza riserializzarli.
+fn listing(items: &str, from_cache: bool, fetched_at: u64) -> String {
+    let mut out = String::with_capacity(items.len() + 64);
+    out.push_str("{\"items\":");
+    out.push_str(items);
+    let _ = write!(
+        out,
+        ",\"from_cache\":{},\"fetched_at\":{}}}",
+        from_cache, fetched_at
+    );
+    out
 }
 
 fn begin(id: &str) -> bool {
@@ -171,22 +202,23 @@ fn end(id: &str) {
     }
 }
 
-/// `policy`: "prefer" usa la cache se recente, "refresh" scarica sempre.
+/// `policy`: "prefer" usa la cache se recente, "refresh" scarica sempre. La risposta è il
+/// JSON di `{items, from_cache, fetched_at}`.
 pub async fn load_list<T, F, Fut>(
     app: AppHandle,
     key: CacheKey,
     policy: &str,
     fetch: F,
-) -> Result<Listing<T>, String>
+) -> Result<Response, String>
 where
-    T: Serialize + DeserializeOwned + Clone + Send + 'static,
+    T: Serialize + Send + 'static,
     F: Fn() -> Fut + Send + 'static,
     Fut: Future<Output = Result<Vec<T>, String>> + Send + 'static,
 {
     let cached = if policy == "refresh" {
         None
     } else {
-        read::<T>(&app, &key)
+        read(&app, &key)
     };
     let now = now_secs();
     if let Some((fetched_at, items)) = cached {
@@ -197,52 +229,36 @@ where
                 tauri::async_runtime::spawn(async move {
                     if let Ok(fresh) = fetch().await {
                         let at = now_secs();
-                        write(&app, &key, at, &fresh);
-                        let _ = app.emit(
-                            "list-updated",
-                            ListUpdated {
-                                server: key.server.clone(),
-                                username: key.username.clone(),
-                                action: key.action.clone(),
-                                category_id: key.category.clone(),
-                                items: fresh,
-                                fetched_at: at,
-                            },
-                        );
+                        if store(&app, &key, at, &fresh).is_ok() {
+                            let _ = app.emit(
+                                "list-updated",
+                                ListUpdated {
+                                    server: key.server.clone(),
+                                    username: key.username.clone(),
+                                    action: key.action.clone(),
+                                    category_id: key.category.clone(),
+                                    fetched_at: at,
+                                },
+                            );
+                        }
                     }
                     end(&id);
                 });
             }
-            return Ok(Listing {
-                items,
-                from_cache: true,
-                fetched_at,
-            });
+            return Ok(Response::new(listing(items.get(), true, fetched_at)));
         }
         // cache vecchia: si prova a scaricare, ma senza rete resta meglio di niente
-        return match fetch().await {
-            Ok(fresh) => {
-                write(&app, &key, now, &fresh);
-                Ok(Listing {
-                    items: fresh,
-                    from_cache: false,
-                    fetched_at: now,
-                })
-            }
-            Err(_) => Ok(Listing {
-                items,
-                from_cache: true,
-                fetched_at,
-            }),
-        };
+        return Ok(Response::new(match fetch().await {
+            Ok(fresh) => listing(&store(&app, &key, now, &fresh)?, false, now),
+            Err(_) => listing(items.get(), true, fetched_at),
+        }));
     }
     let fresh = fetch().await?;
-    write(&app, &key, now, &fresh);
-    Ok(Listing {
-        items: fresh,
-        from_cache: false,
-        fetched_at: now,
-    })
+    Ok(Response::new(listing(
+        &store(&app, &key, now, &fresh)?,
+        false,
+        now,
+    )))
 }
 
 /// Cancella tutte le liste salvate, guida TV compresa ("Svuota cache").
@@ -307,6 +323,30 @@ mod tests {
         let mut spaced = key("1");
         spaced.username = "  mario ".into();
         assert_eq!(spaced.account_hash(), key("1").account_hash());
+    }
+
+    #[test]
+    fn entry_round_trip_keeps_items_json() {
+        let dir = std::env::temp_dir().join(format!("xp-cache-test-{}", std::process::id()));
+        let path = dir.join("acct").join("get_live_streams__all.json");
+        let items = r#"[{"stream_id":"1","name":"Uno"},{"stream_id":"2","name":"Due \"x\""}]"#;
+        write_entry(&path, 1234, items);
+        let (at, raw) = read_entry(&path).expect("lista salvata");
+        assert_eq!(at, 1234);
+        assert_eq!(raw.get(), items);
+
+        // risposta dei comandi: JSON valido con gli elementi intatti
+        let v: serde_json::Value = serde_json::from_str(&listing(raw.get(), true, at)).unwrap();
+        assert_eq!(v["from_cache"], true);
+        assert_eq!(v["fetched_at"], 1234);
+        assert_eq!(v["items"][1]["name"], "Due \"x\"");
+
+        // file troncato o con un formato diverso: come se non ci fosse
+        std::fs::write(&path, r#"{"fetched_at":1,"items":[{"a":1}"#).unwrap();
+        assert!(read_entry(&path).is_none());
+        std::fs::write(&path, r#"{"fetched_at":1,"items":{"a":1}}"#).unwrap();
+        assert!(read_entry(&path).is_none());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

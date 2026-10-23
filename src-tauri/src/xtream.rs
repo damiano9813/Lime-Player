@@ -7,9 +7,10 @@ use reqwest::Url;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
+use tauri::ipc::Response;
 use tauri::{AppHandle, State};
 
-use crate::cache::{load_list, CacheKey, Listing};
+use crate::cache::{load_list, CacheKey};
 use crate::state::AppState;
 use crate::util::{describe_reqwest_error, preview, USER_AGENT};
 
@@ -66,6 +67,10 @@ pub fn flex_f64<'de, D: Deserializer<'de>>(d: D) -> Result<f64, D::Error> {
     })
 }
 
+pub fn is_zero(v: &f64) -> bool {
+    *v == 0.0
+}
+
 pub fn field(v: &Value, key: &str) -> String {
     v.get(key).map(value_to_string).unwrap_or_default()
 }
@@ -80,32 +85,69 @@ pub struct Category {
     pub parent_id: String,
 }
 
+/// Canale o film, con i soli campi usati dalla UI. Verso la UI e nella cache i campi vuoti non
+/// si scrivono (con `stream_type` erano un quarto del JSON di un catalogo da 180.000 film):
+/// rileggendo valgono di nuovo "" e 0.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamItem {
-    #[serde(default, deserialize_with = "flex_string")]
+    #[serde(
+        default,
+        deserialize_with = "flex_string",
+        skip_serializing_if = "String::is_empty"
+    )]
     pub num: String,
     #[serde(default, deserialize_with = "flex_string")]
     pub name: String,
     #[serde(default, deserialize_with = "flex_string")]
-    pub stream_type: String,
-    #[serde(default, deserialize_with = "flex_string")]
     pub stream_id: String,
-    #[serde(default, deserialize_with = "flex_string")]
+    #[serde(
+        default,
+        deserialize_with = "flex_string",
+        skip_serializing_if = "String::is_empty"
+    )]
     pub stream_icon: String,
-    #[serde(default, deserialize_with = "flex_string")]
+    #[serde(
+        default,
+        deserialize_with = "flex_string",
+        skip_serializing_if = "String::is_empty"
+    )]
     pub epg_channel_id: String,
-    #[serde(default, deserialize_with = "flex_string")]
+    #[serde(
+        default,
+        deserialize_with = "flex_string",
+        skip_serializing_if = "String::is_empty"
+    )]
     pub category_id: String,
-    #[serde(default, deserialize_with = "flex_string")]
+    #[serde(
+        default,
+        deserialize_with = "flex_string",
+        skip_serializing_if = "String::is_empty"
+    )]
     pub container_extension: String,
-    #[serde(default, deserialize_with = "flex_f64")]
+    #[serde(
+        default,
+        deserialize_with = "flex_f64",
+        skip_serializing_if = "is_zero"
+    )]
     pub rating: f64,
-    #[serde(default, deserialize_with = "flex_string")]
+    #[serde(
+        default,
+        deserialize_with = "flex_string",
+        skip_serializing_if = "String::is_empty"
+    )]
     pub added: String,
-    #[serde(default, deserialize_with = "flex_string")]
+    #[serde(
+        default,
+        deserialize_with = "flex_string",
+        skip_serializing_if = "String::is_empty"
+    )]
     pub tv_archive: String,
     /// giorni di archivio per il catch-up
-    #[serde(default, deserialize_with = "flex_string")]
+    #[serde(
+        default,
+        deserialize_with = "flex_string",
+        skip_serializing_if = "String::is_empty"
+    )]
     pub tv_archive_duration: String,
 }
 
@@ -322,7 +364,7 @@ pub async fn get_categories(
     password: String,
     mode: String,
     cache: Option<String>,
-) -> Result<Listing<Category>, String> {
+) -> Result<Response, String> {
     if !matches!(
         mode.as_str(),
         "get_live_categories" | "get_vod_categories" | "get_series_categories"
@@ -381,7 +423,7 @@ pub async fn get_streams(
     mode: String,
     category_id: String,
     cache: Option<String>,
-) -> Result<Listing<StreamItem>, String> {
+) -> Result<Response, String> {
     if !matches!(mode.as_str(), "get_live_streams" | "get_vod_streams") {
         return Err(format!("Modalità stream non supportata: {}", mode));
     }
@@ -480,6 +522,29 @@ mod tests {
         assert_eq!(value_to_string(&json!(true)), "1");
         assert_eq!(value_to_string(&json!([3, 4])), "3");
         assert_eq!(value_to_string(&json!({"a": 1})), "");
+    }
+
+    #[test]
+    fn stream_item_skips_empty_fields() {
+        let server = json!({"num": 1, "name": "Film", "stream_type": "movie", "stream_id": 7,
+                            "stream_icon": "", "epg_channel_id": null, "category_id": "3",
+                            "container_extension": "mkv", "rating": "0", "added": "1700000000",
+                            "tv_archive": "", "tv_archive_duration": ""});
+        let s: StreamItem = serde_json::from_value(server).unwrap();
+        let out = serde_json::to_value(&s).unwrap();
+        assert_eq!(
+            out,
+            json!({"num": "1", "name": "Film", "stream_id": "7", "category_id": "3",
+                   "container_extension": "mkv", "added": "1700000000"})
+        );
+        // rilettura dalla cache, anche di quella scritta dalle versioni precedenti
+        let back: StreamItem = serde_json::from_value(out).unwrap();
+        assert_eq!(back.stream_icon, "");
+        assert_eq!(back.rating, 0.0);
+        let old: StreamItem = serde_json::from_value(json!({"name": "C", "stream_type": "live",
+            "stream_id": "9", "rating": 0, "tv_archive": "1", "tv_archive_duration": "3"}))
+        .unwrap();
+        assert_eq!(old.tv_archive_duration, "3");
     }
 
     #[test]

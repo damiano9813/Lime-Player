@@ -48,15 +48,14 @@ const catalogItems = (mode) => (S.categories[mode] && S.cache.get(catalogKey(mod
 
 // Catalogo completo di una sezione (categorie e tutti gli elementi), condiviso con la lista della
 // Live TV. Con "prefer" arriva subito quello salvato su disco; il backend lo riscarica in
-// background e lo manda con l'evento list-updated (onCatalogUpdated).
+// background e lo segnala con l'evento list-updated (onListUpdated, poi onCatalogUpdated).
 function ensureCatalog(mode, force) {
   if (!force && catalogItems(mode)) return Promise.resolve(catalogItems(mode));
   if (B.pending.has(mode)) return B.pending.get(mode);
   const acct = S.acct;
   const p = (async () => {
     if ((force || !S.categories[mode]) && !await fetchCategories(mode, force)) return null;
-    const args = { ...S.creds, categoryId: '', cache: force ? 'refresh' : 'prefer' };
-    const res = mode === 'series' ? await invoke('get_series_list', args) : await invoke('get_streams', { ...args, mode: MODE_API[mode].streams });
+    const res = await invokeList(S.creds, mode, '', force ? 'refresh' : 'prefer');
     if (S.acct !== acct) return null;
     // le sottoliste ricavate in memoria dal catalogo vecchio vanno ricalcolate
     if (force) for (const k of Array.from(S.cache.keys())) if (k.startsWith(mode + '|')) S.cache.delete(k);
