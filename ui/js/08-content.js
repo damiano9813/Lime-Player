@@ -1,5 +1,5 @@
-// Contenuti: guida TV (pannello, OSD, righe della lista), serie con stagioni ed episodi,
-// catch-up dei programmi passati e scheda dei film.
+// Contenuti: guida TV (pannello, OSD, righe della lista), episodi delle serie, catch-up dei
+// programmi passati e schede di film e serie.
 'use strict';
 
 const nowSec = () => Date.now() / 1000;
@@ -149,15 +149,23 @@ function renderContentInfo(item, mode) {
   });
 }
 
-// ------------------------------------------------------------------ scheda film
-const VODINFO = new Map();
+// ------------------------------------------------------------------ schede di film e serie
+// richieste una volta per sessione (si svuotano al cambio di playlist); un errore non resta in cache
+const VODINFO = new Map(), SERIESINFO = new Map();
+function cachedInfo(map, cmd, args, id) {
+  if (!map.has(id)) map.set(id, invoke(cmd, { ...S.creds, ...args }).catch(() => { map.delete(id); return null; }));
+  return map.get(id);
+}
 function vodInfoFor(item) {
   if (!item || !S.creds) return Promise.resolve(null);
   const id = String(item.stream_id);
-  if (!VODINFO.has(id)) {
-    VODINFO.set(id, invoke('get_vod_info', { ...S.creds, vodId: id }).catch(() => { VODINFO.delete(id); return null; }));
-  }
-  return VODINFO.get(id);
+  return cachedInfo(VODINFO, 'get_vod_info', { vodId: id }, id);
+}
+// episodi e stagioni della serie (null se la richiesta non riesce)
+function seriesInfoFor(item) {
+  if (!item || !S.creds) return Promise.resolve(null);
+  const id = String(item.stream_id);
+  return cachedInfo(SERIESINFO, 'get_series_info', { seriesId: id }, id);
 }
 
 // ------------------------------------------------------------------ catch-up
@@ -223,76 +231,12 @@ function episodeTitle(e) {
   return (m ? m[1] : t).trim() || `Episodio ${e.episode_num}`;
 }
 
-async function openSeries(it) {
-  S.seriesView = { item: it, info: null, season: null };
-  $('series-view').classList.remove('hidden');
-  $('series-title').textContent = it.name;
-  $('series-meta').textContent = [it.genre, (it.release_date || '').slice(0, 4), it.rating > 0 ? '★ ' + Number(it.rating).toFixed(1) : ''].filter(Boolean).join('  ·  ');
-  $('series-plot').textContent = it.plot || '';
-  const cover = $('series-cover');
-  cover.textContent = initials(it.name);
-  if (it.stream_icon && /^https?:\/\//i.test(it.stream_icon)) {
-    cover.innerHTML = `<img src="${escapeHtml(it.stream_icon)}" referrerpolicy="no-referrer" class="w-full h-full object-cover" alt="">`;
-  }
-  $('series-seasons').innerHTML = '';
-  $('series-episodes').innerHTML = '<p class="text-sm text-ink-muted p-4">Caricamento episodi…</p>';
-  let info;
-  try { info = await invoke('get_series_info', { ...S.creds, seriesId: String(it.stream_id) }); } catch (e) {
-    if (S.seriesView && S.seriesView.item === it) $('series-episodes').innerHTML = `<p class="text-sm text-danger p-4">${escapeHtml(errText(e))}</p>`;
-    return;
-  }
-  if (!S.seriesView || S.seriesView.item !== it) return;
-  S.seriesView.info = info;
-  if (info.meta.plot && !it.plot) $('series-plot').textContent = info.meta.plot;
-  if (!info.episodes.length) { $('series-episodes').innerHTML = '<p class="text-sm text-ink-muted p-4">Nessun episodio disponibile.</p>'; return; }
-  // si riparte dalla stagione dell'ultimo episodio visto
-  const lastId = lsGet(ak('series.last.' + it.stream_id), null);
-  const last = info.episodes.find((e) => String(e.id) === String(lastId));
-  S.seriesView.season = last ? last.season : info.seasons[0].season_number;
-  renderSeasons();
-  renderEpisodes(last ? last.id : null);
-}
-
-function closeSeries() {
-  S.seriesView = null;
-  $('series-view').classList.add('hidden');
-}
-
-function renderSeasons() {
-  const v = S.seriesView;
-  $('series-seasons').innerHTML = v.info.seasons.map((s) => {
-    const on = s.season_number === v.season;
-    return `<button data-season="${s.season_number}" role="tab" aria-selected="${on}" class="btn btn-sm shrink-0 ${on ? 'bg-accent-soft text-accent-ink border-accent' : 'btn-secondary'}">Stagione ${s.season_number}<span class="opacity-70 font-semibold">${s.episode_count}</span></button>`;
-  }).join('');
-}
-
-function renderEpisodes(scrollToId) {
-  const v = S.seriesView;
-  if (!v || !v.info) return;
-  const eps = seasonEpisodes(v.info, v.season);
-  const curId = S.current && S.current._kind === 'episode' ? String(S.current.stream_id) : null;
-  $('series-episodes').innerHTML = eps.map((e) => {
-    const on = String(e.id) === curId;
-    const resume = getResume(ak('resume.ep.' + e.id));
-    const pct = e.duration_secs > 0 && resume > 30 ? Math.min(100, (resume / e.duration_secs) * 100) : 0;
-    return `<button data-ep="${escapeHtml(e.id)}" class="relative w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${on ? 'row-active' : 'hover:bg-s2'}">
-      <span class="w-14 shrink-0 text-[11px] font-bold tabular-nums ${on ? 'text-accent-ink' : 'text-ink-subtle'}">${XPCore.episodeLabel(e)}</span>
-      <span class="flex-1 min-w-0">
-        <span class="block text-sm truncate ${on ? 'text-accent-ink font-bold' : 'text-ink font-medium'}">${escapeHtml(episodeTitle(e))}</span>
-        <span class="block text-[11px] font-medium text-ink-subtle">${escapeHtml([fmtMinutes(e.duration_secs), resume > 30 ? 'riprendi da ' + fmtTime(resume) : ''].filter(Boolean).join(' · '))}</span>
-        ${pct ? `<span class="block h-0.5 mt-1 rounded-full bg-s4 overflow-hidden"><span class="block h-full bg-accent" style="width:${pct}%"></span></span>` : ''}
-      </span>
-    </button>`;
-  }).join('');
-  if (scrollToId) {
-    const el = $('series-episodes').querySelector(`[data-ep="${CSS.escape(String(scrollToId))}"]`);
-    if (el) el.scrollIntoView({ block: 'center' });
-  }
-}
-
+// ultimo episodio visto della serie, con il successivo: la Home lo mostra senza scaricare gli episodi
+const episodeRef = (e) => ({ id: String(e.id), label: XPCore.episodeLabel(e), title: episodeTitle(e), d: e.duration_secs || 0 });
 function playEpisode(e, seriesItem, info) {
   const label = XPCore.episodeLabel(e);
-  lsSet(ak('series.last.' + seriesItem.stream_id), e.id);
+  const next = XPCore.nextEpisode(info.episodes, e.id);
+  lsSet(ak('series.last.' + seriesItem.stream_id), { ...episodeRef(e), next: next ? episodeRef(next) : null, t: Date.now() });
   const item = {
     stream_id: String(e.id),
     name: `${seriesItem.name}  ·  ${label}`,
@@ -310,10 +254,6 @@ function playEpisode(e, seriesItem, info) {
     _sub: `${seriesItem.name}  ·  ${label}  ·  ${episodeTitle(e)}`,
   };
   playItem(item, 'vod');
-  if (S.seriesView && S.seriesView.item.stream_id === seriesItem.stream_id) {
-    if (S.seriesView.season !== e.season) { S.seriesView.season = e.season; renderSeasons(); }
-    renderEpisodes(e.id);
-  }
 }
 
 function stepEpisode(delta) {
@@ -325,27 +265,17 @@ function stepEpisode(delta) {
   if (target) playEpisode(target, cur._series, cur._seriesInfo);
 }
 
-// fine di un episodio: si passa al successivo dopo un breve avviso
+// fine di un episodio: si passa al successivo dopo un breve avviso. Film e ultimo episodio
+// chiudono il player a tutta finestra (si torna alla scheda o alle righe)
+const closePlayerLater = (item) => setTimeout(() => { if (S.current === item) closePlayer(); }, 3000);
 function onPlaybackEnded(item) {
-  if (item._kind !== 'episode') return;
+  if (item._kind !== 'episode') { if (playerFull()) closePlayerLater(item); return; }
+  // episodio finito: la Home propone il successivo (o toglie la serie, se era l'ultimo)
+  const lk = item._series && ak('series.last.' + item._series.stream_id);
+  const last = lk && lsGet(lk, null);
+  if (last && typeof last === 'object' && String(last.id) === String(item.stream_id)) lsSet(lk, { ...last, done: true });
   const next = XPCore.nextEpisode(item._episodes, item.stream_id);
-  if (!next) { toast('Ultimo episodio disponibile della serie', 'ok'); return; }
+  if (!next) { toast('Ultimo episodio disponibile della serie', 'ok'); closePlayerLater(item); return; }
   toast(`Tra poco: ${XPCore.episodeLabel(next)} · ${episodeTitle(next)}`);
   setTimeout(() => { if (S.current === item) playEpisode(next, item._series, item._seriesInfo); }, 3000);
 }
-
-$('series-back').addEventListener('click', closeSeries);
-$('series-seasons').addEventListener('click', (ev) => {
-  const b = ev.target.closest('[data-season]');
-  if (!b || !S.seriesView) return;
-  S.seriesView.season = +b.dataset.season;
-  renderSeasons();
-  renderEpisodes();
-});
-$('series-episodes').addEventListener('click', (ev) => {
-  const b = ev.target.closest('[data-ep]');
-  const v = S.seriesView;
-  if (!b || !v || !v.info) return;
-  const e = v.info.episodes.find((x) => String(x.id) === b.dataset.ep);
-  if (e) playEpisode(e, v.item, v.info);
-});

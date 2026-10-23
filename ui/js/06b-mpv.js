@@ -19,6 +19,8 @@ const M = {
   rectRaf: 0,
 };
 // motore scelto nelle impostazioni, se la DLL c'è
+// nome del motore integrato per le etichette: mpv su Windows, ExoPlayer su Android
+const ENGINE_NAME = PLATFORM.android ? 'ExoPlayer' : 'mpv';
 const useMpv = () => M.available && S.settings.engine !== 'web';
 // il contenuto in corso è riprodotto da mpv
 const mpvActive = () => M.loaded && !!S.current;
@@ -32,7 +34,7 @@ function syncMpvRect() {
   cancelAnimationFrame(M.rectRaf);
   M.rectRaf = requestAnimationFrame(() => {
     const show = M.loaded && !$('app-view').classList.contains('hidden');
-    const full = document.fullscreenElement === playerWrap;
+    const full = fsElement() === playerWrap;
     document.documentElement.classList.toggle('engine-mpv', show);
     // a schermo intero il player è trasparente: il resto della pagina, che il browser lascia
     // sotto, traspare sopra il video se non lo si nasconde
@@ -40,16 +42,24 @@ function syncMpvRect() {
     playerWrap.classList.toggle('mpv-on', show);
     if (!show) { invoke('mpv_set_rect', { x: 0, y: 0, w: 0, h: 0, visible: false }).catch(() => {}); return; }
     const r = playerWrap.getBoundingClientRect();
-    backdrop.style.cssText = `left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px;border-radius:${full ? 0 : 12}px`;
+    backdrop.style.cssText = `left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px;border-radius:${full || playerFull() ? 0 : 12}px`;
+    // Android: px CSS e larghezza della pagina, la conversione la fa il plugin (pagina scalata)
+    if (PLATFORM.android) { invoke('mpv_set_rect', { x: r.left, y: r.top, w: r.width, h: r.height, visible: true, vw: window.innerWidth }).catch(() => {}); return; }
     const k = window.devicePixelRatio || 1;
     invoke('mpv_set_rect', { x: r.left * k, y: r.top * k, w: r.width * k, h: r.height * k, visible: true }).catch(() => {});
   });
 }
 new ResizeObserver(syncMpvRect).observe(playerWrap);
 window.addEventListener('resize', syncMpvRect);
-document.addEventListener('fullscreenchange', syncMpvRect);
-playerWrap.closest('.overflow-y-auto').addEventListener('scroll', syncMpvRect, { passive: true });
-// modalità cinema e cambio di vista spostano il player senza ridimensionarlo
+// la finestra cambia misura in più passaggi dopo l'evento: si rimisura anche a transizione finita
+document.addEventListener('fullscreenchange', () => {
+  syncMpvRect();
+  setTimeout(syncMpvRect, 150);
+  setTimeout(syncMpvRect, 500);
+});
+$('live-scroller').addEventListener('scroll', syncMpvRect, { passive: true });
+// modalità cinema e cambio di vista spostano il player senza ridimensionarlo (il passaggio a tutta
+// finestra lo segnala mountPlayer)
 new MutationObserver(syncMpvRect).observe($('app-view'), { attributes: true, attributeFilter: ['class'] });
 
 // ------------------------------------------------------------------ avvio e arresto
@@ -136,7 +146,7 @@ video.addEventListener('volumechange', () => {
 
 function mpvTech() {
   const t = M.tech, bits = [];
-  bits.push(S.currentMode === 'live' ? (P.fmt === 'm3u8' ? 'HLS (mpv)' : 'MPEG-TS (mpv)') : `${(S.current.container_extension || 'mp4').toUpperCase()} (mpv)`);
+  bits.push(S.currentMode === 'live' ? (P.fmt === 'm3u8' ? `HLS (${ENGINE_NAME})` : `MPEG-TS (${ENGINE_NAME})`) : `${(S.current.container_extension || 'mp4').toUpperCase()} (${ENGINE_NAME})`);
   if (t.width && t.height) bits.push(`${t.width}×${t.height}`);
   if (t.vcodec) bits.push(t.vcodec);
   if (t.acodec) bits.push(t.acodec + (t.channels ? ` ${XPCore.channelsLabel(t.channels)}` : ''));
@@ -177,7 +187,7 @@ function onMpvEvent(e) {
       updateTimeUi();
       if (S.currentMode === 'vod' && t > 0 && Date.now() - M.lastResumeSave > 5000) {
         const rk = resumeKey(S.current);
-        if (rk) { M.lastResumeSave = Date.now(); setResume(rk, Math.floor(t)); }
+        if (rk) { M.lastResumeSave = Date.now(); setResume(rk, Math.floor(t), M.duration); }
       }
       break;
     }
@@ -225,7 +235,7 @@ function onMpvEnd(v) {
 function updateMpvCacheUi() {
   const el = $('info-latency');
   if (!mpvActive() || S.currentMode !== 'live') { if (M.loaded) el.textContent = ''; return; }
-  el.textContent = `Buffer ${M.cache.toFixed(1)} s · mpv`;
+  el.textContent = `Buffer ${M.cache.toFixed(1)} s · ${ENGINE_NAME}`;
 }
 
 // ------------------------------------------------------------------ avvio

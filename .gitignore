@@ -1,9 +1,11 @@
 # build Rust/Tauri
 src-tauri/target/
-src-tauri/gen/
+# generati da tauri-build; il progetto Android (gen/android) invece è versionato
+src-tauri/gen/schemas/
 src-tauri/binaries/
 # dipendenze frontend
 node_modules/
 ui/vendor/
 # chiavi di firma degli aggiornamenti: solo fuori dal repository
 *.key
+*.jks

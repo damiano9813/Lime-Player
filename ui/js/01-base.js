@@ -8,11 +8,19 @@ const invoke = (cmd, args) => {
   if (!TAURI || !TAURI.core) return Promise.reject('API Tauri non disponibile: avvia l\'app con "cargo tauri dev".');
   return TAURI.core.invoke(cmd, args || {});
 };
+// piattaforma: Android dallo user agent (subito), TV, tocco e nome del dispositivo da platform_info
+// (initAndroid in 09e-tv.js e initPlatform in 10-main.js)
+const PLATFORM = { android: /Android/i.test(navigator.userAgent), tv: false, touch: false, os: '', device: '' };
+// schermo intero: sul desktop l'API del browser; la WebView di Android non la supporta e il player
+// copre la pagina con la classe "fs-fake" (07-controls.js)
+const fsElement = () => document.fullscreenElement || document.querySelector('#player-wrap.fs-fake');
 const errText = (e) => (typeof e === 'string' ? e : (e && e.message) ? e.message : JSON.stringify(e));
 const { escapeHtml, normKey, initials, fmtTime, debounce } = XPCore;
+// avvisato a ogni scrittura: la sincronizzazione (09d-sync.js) segna le chiavi da pubblicare
+let onStoreWrite = null;
 const lsGet = (k, def) => { try { const v = localStorage.getItem(k); return v == null ? def : JSON.parse(v); } catch { return def; } };
-const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage pieno o disabilitato */ } };
-const lsDel = (k) => { try { localStorage.removeItem(k); } catch { /* ignorato */ } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage pieno o disabilitato */ } if (onStoreWrite) onStoreWrite(k); };
+const lsDel = (k) => { try { localStorage.removeItem(k); } catch { /* ignorato */ } if (onStoreWrite) onStoreWrite(k); };
 const lsKeys = () => { try { return Object.keys(localStorage); } catch { return []; } };
 
 let toastTimer = null;
@@ -58,11 +66,12 @@ const modalOpen = () => !$('modal').classList.contains('hidden');
 $('modal').addEventListener('click', (ev) => { if (ev.target === $('modal')) closeModal(false); });
 
 const SHORTCUTS = [
-  [['Spazio'], 'Play / pausa'], [['↑', '↓'], 'Canale o film precedente / successivo'], [['0–9'], 'Vai al canale con quel numero'],
-  [['⌫'], 'Torna all\'ultimo contenuto visto'],
-  [['←', '→'], 'Indietro / avanti 10 s (film)'], [['+', '−'], 'Volume (anche rotella sul player)'], [['M'], 'Muto'],
-  [['F'], 'Schermo intero'], [['T'], 'Modalità cinema'], [['P'], 'Picture in Picture'], [['R'], 'Ricarica stream'],
-  [['G'], 'Guida TV a griglia (Live TV)'], [['/'], 'Cerca nella lista'], [['Esc'], 'Svuota la ricerca / chiudi'], [['?'], 'Mostra questo elenco'],
+  [['Spazio'], 'Play / pausa'], [['↑', '↓'], 'Canale precedente / successivo (Live TV) · volume (film e serie)'], [['0–9'], 'Vai al canale con quel numero'],
+  [['⌫'], 'Torna all\'ultimo contenuto visto'], [['N'], 'Episodio successivo'],
+  [['←', '→'], 'Indietro / avanti 10 s (film e serie)'], [['+', '−'], 'Volume (anche rotella sul player)'], [['M'], 'Muto'],
+  [['F'], 'Schermo intero'], [['T'], 'Modalità cinema (Live TV)'], [['P'], 'Picture in Picture'], [['R'], 'Ricarica stream'],
+  [['H'], 'Home'], [['G'], 'Guida TV a griglia (Live TV)'], [['/'], 'Cerca (film, serie e canali; nella Live TV la lista)'],
+  [['Esc'], 'Chiudi la scheda, torna indietro dal player, svuota la ricerca'], [['?'], 'Mostra questo elenco'],
 ];
 function showShortcuts() {
   const rows = SHORTCUTS.map(([keys, desc]) =>
@@ -87,4 +96,6 @@ const ICONS = {
   back: '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>',
   gear: '<svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
   eq: '<span class="eq" aria-label="In riproduzione"><i></i><i></i><i></i></span>',
+  check: '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>',
+  checks: '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 7 2 2 4-4M3 17l2 2 4-4M13 6h8M13 12h8M13 18h8"/></svg>',
 };

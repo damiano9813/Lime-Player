@@ -1,5 +1,6 @@
 //! Playlist salvate: server, utente e nome di ogni account in `credentials.json` nella cartella
-//! di configurazione dell'app, le password in Gestione credenziali di Windows (crate `keyring`).
+//! di configurazione dell'app, le password in Gestione credenziali di Windows (crate `keyring`)
+//! o, su Android, in `vault.json` nella cartella privata dell'app (non leggibile da altre app).
 //! I vecchi file con un solo account (e quelli ancora più vecchi con la password in chiaro)
 //! vengono migrati al primo caricamento.
 
@@ -8,6 +9,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
+#[cfg(windows)]
 const SERVICE: &str = "com.xtreamplayer.desktop";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -119,8 +121,10 @@ pub trait Vault {
     fn delete(&self, key: &str) -> Result<(), String>;
 }
 
+#[cfg(windows)]
 pub struct KeyringVault;
 
+#[cfg(windows)]
 impl KeyringVault {
     fn entry(key: &str) -> Result<keyring::Entry, String> {
         // nome leggibile in Gestione credenziali > Credenziali generiche
@@ -129,6 +133,7 @@ impl KeyringVault {
     }
 }
 
+#[cfg(windows)]
 impl Vault for KeyringVault {
     fn get(&self, key: &str) -> Result<Option<String>, String> {
         match Self::entry(key)?.get_password() {
@@ -148,6 +153,64 @@ impl Vault for KeyringVault {
             Err(e) => Err(e.to_string()),
         }
     }
+}
+
+/// Password in un file JSON (chiave del vault -> password) nella cartella privata dell'app.
+#[cfg_attr(windows, allow(dead_code))]
+pub struct FileVault {
+    path: PathBuf,
+}
+
+#[cfg_attr(windows, allow(dead_code))]
+impl FileVault {
+    pub fn new(path: PathBuf) -> Self {
+        Self { path }
+    }
+    fn read(&self) -> std::collections::BTreeMap<String, String> {
+        std::fs::read_to_string(&self.path)
+            .ok()
+            .and_then(|t| serde_json::from_str(&t).ok())
+            .unwrap_or_default()
+    }
+    fn write(&self, items: &std::collections::BTreeMap<String, String>) -> Result<(), String> {
+        if items.is_empty() {
+            return match std::fs::remove_file(&self.path) {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.to_string()),
+                _ => Ok(()),
+            };
+        }
+        let json = serde_json::to_string(items).map_err(|e| e.to_string())?;
+        std::fs::write(&self.path, json).map_err(|e| format!("Salvataggio password fallito: {}", e))
+    }
+}
+
+impl Vault for FileVault {
+    fn get(&self, key: &str) -> Result<Option<String>, String> {
+        Ok(self.read().remove(key))
+    }
+    fn set(&self, key: &str, password: &str) -> Result<(), String> {
+        let mut items = self.read();
+        items.insert(key.to_string(), password.to_string());
+        self.write(&items)
+    }
+    fn delete(&self, key: &str) -> Result<(), String> {
+        let mut items = self.read();
+        if items.remove(key).is_none() {
+            return Ok(());
+        }
+        self.write(&items)
+    }
+}
+
+/// Vault della piattaforma: Gestione credenziali su Windows, file privato altrove.
+#[cfg(windows)]
+fn vault(_path: &Path) -> Box<dyn Vault> {
+    Box::new(KeyringVault)
+}
+
+#[cfg(not(windows))]
+fn vault(path: &Path) -> Box<dyn Vault> {
+    Box::new(FileVault::new(path.with_file_name("vault.json")))
 }
 
 fn write_file(path: &Path, file: &AccountsFile) -> Result<(), String> {
@@ -217,6 +280,26 @@ pub fn save_with(path: &Path, vault: &dyn Vault, creds: SavedCredentials) -> Res
         }),
     }
     file.last = Some(key);
+    write_file(path, &file)
+}
+
+/// Playlist ricevuta da un altro dispositivo (sincronizzazione): aggiunta o aggiornata senza
+/// cambiare quella dell'accesso automatico. Il nome arrivato sostituisce quello locale, anche vuoto.
+pub fn import_with(path: &Path, vault: &dyn Vault, creds: SavedCredentials) -> Result<(), String> {
+    let (mut file, _) = read_migrated(path, vault);
+    let key = vault_key(&creds.server, &creds.username);
+    vault
+        .set(&key, &creds.password)
+        .map_err(|e| format!("Archivio delle password non disponibile: {}", e))?;
+    let name = creds.name.trim().to_string();
+    match file.accounts.iter_mut().find(|a| a.vault_key() == key) {
+        Some(a) => a.name = name,
+        None => file.accounts.push(StoredAccount {
+            server: creds.server,
+            username: creds.username,
+            name,
+        }),
+    }
     write_file(path, &file)
 }
 
@@ -316,17 +399,62 @@ pub fn save_credentials(
         password,
         name: name.unwrap_or_default(),
     };
-    save_with(&credentials_path(&app)?, &KeyringVault, creds)
+    let path = credentials_path(&app)?;
+    save_with(&path, vault(&path).as_ref(), creds)
+}
+
+/// Voce del vault con il codice di sincronizzazione (dà accesso ai dati cifrati di tutti i
+/// dispositivi del gruppo: sta con le password, non in localStorage).
+const SYNC_VAULT_KEY: &str = "xp-sync-code";
+
+#[tauri::command]
+pub fn load_sync_code(app: AppHandle) -> Result<Option<String>, String> {
+    let path = credentials_path(&app)?;
+    vault(&path).get(SYNC_VAULT_KEY)
+}
+
+/// `None` (o vuoto) toglie il codice: la sincronizzazione si disattiva su questo dispositivo.
+#[tauri::command]
+pub fn save_sync_code(app: AppHandle, code: Option<String>) -> Result<(), String> {
+    let path = credentials_path(&app)?;
+    let v = vault(&path);
+    match code.as_deref().map(str::trim).filter(|c| !c.is_empty()) {
+        Some(c) => v.set(SYNC_VAULT_KEY, c),
+        None => v.delete(SYNC_VAULT_KEY),
+    }
+}
+
+#[tauri::command]
+pub fn import_account(
+    app: AppHandle,
+    server: String,
+    username: String,
+    password: String,
+    name: Option<String>,
+) -> Result<(), String> {
+    if server.trim().is_empty() || username.trim().is_empty() || password.is_empty() {
+        return Err("Playlist incompleta".into());
+    }
+    let creds = SavedCredentials {
+        server,
+        username,
+        password,
+        name: name.unwrap_or_default(),
+    };
+    let path = credentials_path(&app)?;
+    import_with(&path, vault(&path).as_ref(), creds)
 }
 
 #[tauri::command]
 pub fn load_credentials(app: AppHandle) -> Result<Option<SavedCredentials>, String> {
-    load_with(&credentials_path(&app)?, &KeyringVault)
+    let path = credentials_path(&app)?;
+    load_with(&path, vault(&path).as_ref())
 }
 
 #[tauri::command]
 pub fn list_accounts(app: AppHandle) -> Result<Vec<AccountSummary>, String> {
-    Ok(list_with(&credentials_path(&app)?, &KeyringVault))
+    let path = credentials_path(&app)?;
+    Ok(list_with(&path, vault(&path).as_ref()))
 }
 
 #[tauri::command]
@@ -335,17 +463,20 @@ pub fn load_account(
     server: String,
     username: String,
 ) -> Result<Option<SavedCredentials>, String> {
-    account_with(&credentials_path(&app)?, &KeyringVault, &server, &username)
+    let path = credentials_path(&app)?;
+    account_with(&path, vault(&path).as_ref(), &server, &username)
 }
 
 #[tauri::command]
 pub fn remove_account(app: AppHandle, server: String, username: String) -> Result<(), String> {
-    remove_with(&credentials_path(&app)?, &KeyringVault, &server, &username)
+    let path = credentials_path(&app)?;
+    remove_with(&path, vault(&path).as_ref(), &server, &username)
 }
 
 #[tauri::command]
 pub fn clear_last_account(app: AppHandle) -> Result<(), String> {
-    clear_last_with(&credentials_path(&app)?, &KeyringVault)
+    let path = credentials_path(&app)?;
+    clear_last_with(&path, vault(&path).as_ref())
 }
 
 #[cfg(test)]
@@ -528,7 +659,52 @@ mod tests {
         std::fs::remove_dir_all(path.parent().unwrap()).ok();
     }
 
+    #[test]
+    fn import_keeps_auto_login() {
+        let dir = std::env::temp_dir().join(format!("xp-import-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("credentials.json");
+        let vault = FileVault::new(dir.join("vault.json"));
+        let c = |server: &str, user: &str, pw: &str, name: &str| SavedCredentials {
+            server: server.into(),
+            username: user.into(),
+            password: pw.into(),
+            name: name.into(),
+        };
+        save_with(&path, &vault, c("http://a", "u1", "p1", "")).unwrap();
+        import_with(&path, &vault, c("http://b", "u2", "p2", "Casa")).unwrap();
+        // l'accesso automatico resta sulla prima
+        assert_eq!(load_with(&path, &vault).unwrap().unwrap().username, "u1");
+        let list = list_with(&path, &vault);
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[1].name, "Casa");
+        // aggiornamento: nuova password, nome sostituito
+        import_with(&path, &vault, c("http://a", "u1", "p9", "Ufficio")).unwrap();
+        let a = account_with(&path, &vault, "http://a", "u1").unwrap().unwrap();
+        assert_eq!((a.password.as_str(), a.name.as_str()), ("p9", "Ufficio"));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn file_vault_roundtrip() {
+        let dir = std::env::temp_dir().join(format!("xp-file-vault-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let v = FileVault::new(dir.join("vault.json"));
+        assert_eq!(v.get("a").unwrap(), None);
+        v.set("a", "pw1").unwrap();
+        v.set("b", "pw2").unwrap();
+        assert_eq!(v.get("a").unwrap().as_deref(), Some("pw1"));
+        v.delete("a").unwrap();
+        v.delete("a").unwrap();
+        assert_eq!(v.get("a").unwrap(), None);
+        v.delete("b").unwrap();
+        // vuoto: il file sparisce
+        assert!(!dir.join("vault.json").exists());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
     /// Prova il vero vault di Windows: `cargo test keyring_roundtrip -- --ignored`.
+    #[cfg(windows)]
     #[test]
     #[ignore]
     fn keyring_roundtrip() {

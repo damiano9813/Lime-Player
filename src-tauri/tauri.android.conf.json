@@ -1,0 +1,19 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "identifier": "com.xtreamplayer.app",
+  "build": {
+    "beforeDevCommand": { "script": "npm run build:ui", "wait": true },
+    "beforeBuildCommand": "npm run build:ui"
+  },
+  "bundle": {
+    "externalBin": null,
+    "resources": null,
+    "createUpdaterArtifacts": false,
+    "android": {
+      "minSdkVersion": 24
+    }
+  },
+  "plugins": {
+    "updater": null
+  }
+}

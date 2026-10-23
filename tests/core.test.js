@@ -429,9 +429,9 @@ test('mpv: tracce da track-list e cache del live', () => {
   assert.equal(X.pickTrack(t.audio, 'ita'), 0);
   assert.deepEqual(X.mpvTracks(undefined), { audio: [], subs: [], aid: 0, sid: 0 });
   assert.equal(X.mpvCacheSecs('min'), 1);
-  assert.equal(X.mpvCacheSecs('bal'), 2);
-  assert.equal(X.mpvCacheSecs('stable'), 4);
-  assert.equal(X.mpvCacheSecs('???'), 4);
+  assert.equal(X.mpvCacheSecs('bal'), 1.5);
+  assert.equal(X.mpvCacheSecs('stable'), 2);
+  assert.equal(X.mpvCacheSecs('???'), 2);
 });
 
 test('dati per account: id stabile e chiavi separate', () => {
@@ -551,4 +551,87 @@ test('live: preset Stabile, senza inseguire la diretta', () => {
   const proxy = { port: 5000, token: 'tk' };
   assert.ok(X.proxyUrl(proxy, 'http://h/1.ts', { live: true, keep: 'all' }).endsWith('&keep=all'));
   assert.equal(new URL(X.transcodeUrl(proxy, 'http://h/1.ts', { v: 'h264', a: 'aac' }, { live: true, keep: 'all' })).searchParams.get('keep'), 'all');
+});
+
+test('home: posizione con durata e film da continuare', () => {
+  assert.deepEqual(X.resumeProgress({ p: 600, t: 1, d: 6000 }), { p: 600, d: 6000, pct: 0.1 });
+  assert.deepEqual(X.resumeProgress(120), { p: 120, d: 0, pct: 0 });
+  assert.deepEqual(X.resumeProgress({ p: 50, t: 1 }, 100), { p: 50, d: 100, pct: 0.5 });
+  assert.deepEqual(X.resumeProgress(null), { p: 0, d: 0, pct: 0 });
+  const recent = [{ stream_id: 1 }, { stream_id: 2 }, { stream_id: 3 }, { stream_id: 4 }, { stream_id: 5 }];
+  const saved = { 1: { p: 900, d: 6000 }, 2: { p: 10 }, 3: { p: 5800, d: 6000 }, 5: 1200 };
+  const out = X.continueFilms(recent, (it) => saved[it.stream_id], 10);
+  // 2: appena iniziato, 3: ai titoli di coda, 4: mai salvato
+  assert.deepEqual(out.map((e) => e.item.stream_id), [1, 5]);
+  assert.equal(out[0].pct, 0.15);
+  assert.equal(out[1].d, 0);
+  assert.deepEqual(X.continueFilms(recent, (it) => saved[it.stream_id], 1).map((e) => e.item.stream_id), [1]);
+  assert.deepEqual(X.continueFilms(undefined, () => null, 5), []);
+});
+
+test('home: ultimo episodio e serie da continuare', () => {
+  assert.equal(X.seriesLast(null), null);
+  assert.equal(X.seriesLast(''), null);
+  assert.equal(X.seriesLast({ label: 'x' }), null);
+  assert.deepEqual(X.seriesLast(77), { id: '77', label: '', title: '', d: 0, next: null, done: false, legacy: true });
+  const full = { id: 10, label: 'S01E02', title: 'Due', d: 2400, next: { id: 11, label: 'S01E03', title: 'Tre', d: 2500 }, t: 5 };
+  assert.deepEqual(X.seriesLast(full), { id: '10', label: 'S01E02', title: 'Due', d: 2400,
+    next: { id: '11', label: 'S01E03', title: 'Tre', d: 2500 }, done: false, legacy: false });
+
+  const recent = [{ stream_id: 'a' }, { stream_id: 'b' }, { stream_id: 'c' }, { stream_id: 'd' }, { stream_id: 'e' }, { stream_id: 'f' }];
+  const last = {
+    a: full,                                         // a metà: si riprende l'episodio
+    b: { ...full, id: 20, done: true },              // finito: il successivo
+    c: { id: 30, label: 'S02E10', d: 2000, next: null, done: true }, // ultimo episodio finito: niente
+    d: 40,                                           // legacy senza posizione: niente
+    e: 50,                                           // legacy con posizione: si riprende
+    f: { id: 60, label: 'S01E01', d: 2000, next: { id: 61, label: 'S01E02' } }, // quasi finito: il successivo
+  };
+  const pos = { 10: { p: 1200 }, 50: { p: 300 }, 60: { p: 1950, d: 2000 } };
+  const out = X.continueSeries(recent, (it) => last[it.stream_id], (id) => pos[id], 10);
+  assert.deepEqual(out.map((e) => [e.item.stream_id, e.ep.id, e.next]), [['a', '10', false], ['b', '11', true], ['e', '50', false], ['f', '61', true]]);
+  // la durata dell'episodio salvata con l'ultimo visto serve alla barra se la posizione non la ha
+  assert.equal(out[0].pct, 0.5);
+  assert.equal(out[1].p, 0);
+  // episodio appena aperto (non legacy): si propone da iniziare
+  const fresh = X.continueSeries([{ stream_id: 'a' }], () => full, () => null, 5);
+  assert.deepEqual([fresh[0].ep.id, fresh[0].p, fresh[0].next], ['10', 0, false]);
+  assert.equal(X.continueSeries(recent, (it) => last[it.stream_id], (id) => pos[id], 2).length, 2);
+});
+
+test('catalogo: aggiunti di recente, righe per categoria, ricerca', () => {
+  const items = [
+    { stream_id: 1, name: 'Città di notte', category_id: '2', added: '1700000300' },
+    { stream_id: 2, name: 'Alba', category_id: '1', added: '1700000100' },
+    { stream_id: 3, name: 'Notte fonda', category_id: '2', added: '' },
+    { stream_id: 4, name: 'Mare', category_id: '9', added: '1700000200' },
+  ];
+  assert.deepEqual(X.recentlyAdded(items, 'added', 10).map((i) => i.stream_id), [1, 4, 2]);
+  assert.deepEqual(X.recentlyAdded(items, 'added', 2).map((i) => i.stream_id), [1, 4]);
+  assert.deepEqual(X.recentlyAdded(null, 'added', 5), []);
+  // ordine delle categorie del provider, categorie vuote escluse, elementi fuori categoria ignorati
+  const cats = [{ category_id: '2', category_name: 'Drammatici' }, { category_id: '7', category_name: 'Vuota' }, { category_id: '1', category_name: 'Azione' }];
+  assert.deepEqual(X.groupByCategory(items, cats).map((g) => [g.id, g.name, g.items.map((i) => i.stream_id)]),
+    [['2', 'Drammatici', [1, 3]], ['1', 'Azione', [2]]]);
+  // più categorie: nell'ordine del provider, non in quello della scelta; id numerici o stringhe
+  assert.deepEqual(X.itemsInCategories(items, cats, [1, '2']).map((i) => i.stream_id), [1, 3, 2]);
+  assert.deepEqual(X.itemsInCategories(items, cats, ['7']), []);
+  assert.deepEqual(X.itemsInCategories(items, cats, null), []);
+  const r = X.searchItems(items, 'NOTTE', 1);
+  assert.equal(r.total, 2);
+  assert.deepEqual(r.items.map((i) => i.stream_id), [1]);
+  // parole in qualsiasi ordine, senza accenti
+  assert.deepEqual(X.searchItems(items, 'notte citta', 5).items.map((i) => i.stream_id), [1]);
+  assert.deepEqual(X.searchItems(items, '   ', 5), { items: [], total: 0 });
+});
+
+test('aggiornamento giornaliero delle liste', () => {
+  const day = 86400000, now = 1_800_000_000_000;
+  assert.equal(X.refreshDue(now - day + 1000, now, day), false);
+  assert.equal(X.refreshDue(now - day, now, day), true);
+  // mai fatto, o con l'orologio spostato indietro di più di un'ora
+  assert.equal(X.refreshDue(0, now, day), true);
+  assert.equal(X.refreshDue(null, now, day), true);
+  assert.equal(X.refreshDue(now + 2 * 3600000, now, day), true);
+  assert.equal(X.refreshDue(now + 60000, now, day), false);
 });

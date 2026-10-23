@@ -22,60 +22,104 @@ function zapDigit(d) {
   Z.timer = setTimeout(zapCommit, 1200);
 }
 
+// Esc risale un livello alla volta: menu, scheda, ricerca o griglia, player a tutta finestra,
+// modalità cinema. Nelle righe frecce, pagine, Invio e Spazio scorrono e attivano le schede.
+function onTypingKey(ev) {
+  const id = ev.target.id;
+  if (ev.key === 'Escape') {
+    // prima Esc svuota la ricerca, la seconda toglie il focus
+    if (id === 'stream-search' && S.search) clearSearch();
+    else if (id === 'cat-search' && S.catFilter) { ev.target.value = ''; S.catFilter = ''; renderCategories(); }
+    else if (id === 'gsearch-input' && ev.target.value) clearGlobalSearch(true);
+    else ev.target.blur();
+  }
+  if (id === 'stream-search' && (ev.key === 'ArrowDown' || ev.key === 'Enter')) {
+    ev.preventDefault(); ev.target.blur();
+    if (S.filtered.length) {
+      if (ev.key === 'Enter') { scrollToIndex(0); activateItem(S.filtered[0]); } else if (S.mode !== 'series') stepChannel(1);
+    }
+  }
+  // dalla ricerca in alto al primo risultato
+  if (id === 'gsearch-input' && (ev.key === 'ArrowDown' || ev.key === 'Enter') && B.search) {
+    const first = browsePage.querySelector('.pcard-btn');
+    if (first) { ev.preventDefault(); first.focus(); }
+  }
+}
+
+// pagina a righe (Home, Film, Serie, griglia, ricerca): true se il tasto è gestito qui
+function onBrowseKey(ev) {
+  switch (ev.key) {
+    case 'Escape':
+      if (B.search) clearGlobalSearch(true);
+      else if (B.grid) closeGrid();
+      else return true;
+      ev.preventDefault();
+      return true;
+    case '/': ev.preventDefault(); gsearch.focus(); gsearch.select(); return true;
+    case 'h': case 'H': ev.preventDefault(); setView('home'); return true;
+    case '?': ev.preventDefault(); showShortcuts(); return true;
+    // un canale che continua in sottofondo: muto e volume restano a portata
+    case 'm': case 'M': case '+': case '=': case '-': case '_': return !S.current;
+    default: return true;
+  }
+}
+
 document.addEventListener('keydown', (ev) => {
   if ($('app-view').classList.contains('hidden')) return;
   if (modalOpen()) { if (ev.key === 'Escape') { ev.preventDefault(); closeModal(false); } return; }
   if (settingsPanelOpen()) { if (ev.key === 'Escape') { ev.preventDefault(); closeSettings(); } return; }
+  if (ev.key === 'Escape' && acctMenuOpen()) { ev.preventDefault(); closeAcctMenu(); $('acct-btn').focus(); return; }
   const tag = (ev.target && ev.target.tagName) || '';
-  const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
-  if (typing) {
-    if (ev.key === 'Escape') {
-      // prima Esc svuota la ricerca, la seconda toglie il focus
-      if (ev.target.id === 'stream-search' && S.search) clearSearch();
-      else if (ev.target.id === 'cat-search' && S.catFilter) { ev.target.value = ''; S.catFilter = ''; renderCategories(); }
-      else ev.target.blur();
-    }
-    if (ev.target.id === 'stream-search' && (ev.key === 'ArrowDown' || ev.key === 'Enter')) {
-      ev.preventDefault(); ev.target.blur();
-      if (S.filtered.length) {
-        if (ev.key === 'Enter') { scrollToIndex(0); activateItem(S.filtered[0]); } else if (S.mode !== 'series') stepChannel(1);
-      }
-    }
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') { onTypingKey(ev); return; }
+  if (ev.ctrlKey || ev.altKey || ev.metaKey) return;
+  const full = playerFull();
+  // scheda aperta (e non coperta dal player): Esc la chiude, il resto la scorre e ne attiva i pulsanti
+  if (detailOpen() && !full) {
+    if (ev.key === 'Escape') { ev.preventDefault(); closeDetail(); }
     return;
   }
-  if (ev.ctrlKey || ev.altKey || ev.metaKey) return;
-  if (guideOpen()) {
+  if (!full && browseVisible() && onBrowseKey(ev)) return;
+  if (!full && guideOpen()) {
     if (ev.key === 'Escape' || ev.key === 'g' || ev.key === 'G') { ev.preventDefault(); closeGuide(); return; }
     // frecce e pagine scorrono la griglia; i comandi del player la chiudono prima
     if (/^(Arrow|Page|Home$|End$)/.test(ev.key)) return;
     if (/^[fFtTpP/0-9]$/.test(ev.key)) closeGuide();
   }
-  if (/^[0-9]$/.test(ev.key) && S.mode === 'live') { ev.preventDefault(); zapDigit(ev.key); return; }
+  if (/^[0-9]$/.test(ev.key) && !full && S.view === 'live') { ev.preventDefault(); zapDigit(ev.key); return; }
   if (ev.key === 'Enter' && Z.digits) { ev.preventDefault(); zapCommit(); return; }
   switch (ev.key) {
     case ' ': case 'k': ev.preventDefault(); togglePlay(); break;
     case 'f': case 'F': ev.preventDefault(); toggleFullscreen(); break;
     case 'm': case 'M': ev.preventDefault(); $('btn-mute').click(); osd((video.muted ? ICONS.mute : ICONS.vol).replace('w-5 h-5', 'w-6 h-6')); break;
-    case 't': case 'T': ev.preventDefault(); setTheater(!theaterOn()); break;
+    case 't': case 'T': if (!full) { ev.preventDefault(); setTheater(!theaterOn()); } break;
     case 'p': case 'P': ev.preventDefault(); togglePip(); break;
     case 'r': case 'R': if (S.current) { ev.preventDefault(); playItem(S.current, S.currentMode); } break;
     case '+': case '=': ev.preventDefault(); changeVolume(0.05); break;
     case '-': case '_': ev.preventDefault(); changeVolume(-0.05); break;
+    case 'n': case 'N': if (full && S.current && S.current._kind === 'episode') { ev.preventDefault(); stepEpisode(1); } break;
     case 'Backspace':
       // come il tasto "indietro" del telecomando: alterna tra gli ultimi due contenuti
       if (S.previous) { ev.preventDefault(); const p = S.previous; playItem(p.item, p.mode); locateCurrent(false); }
       break;
-    case 'ArrowDown': ev.preventDefault(); stepChannel(1); break;
-    case 'ArrowUp': ev.preventDefault(); stepChannel(-1); break;
+    // a tutta finestra ↑/↓ regolano il volume, nella Live TV cambiano canale
+    case 'ArrowDown': ev.preventDefault(); if (full) changeVolume(-0.05); else stepChannel(1); break;
+    case 'ArrowUp': ev.preventDefault(); if (full) changeVolume(0.05); else stepChannel(-1); break;
     case 'ArrowRight': if (S.currentMode === 'vod') { ev.preventDefault(); seekBy(10); } break;
     case 'ArrowLeft': if (S.currentMode === 'vod') { ev.preventDefault(); seekBy(-10); } break;
-    case '/': ev.preventDefault(); if (theaterOn()) setTheater(false); closeSeries(); $('stream-search').focus(); $('stream-search').select(); break;
+    case '/':
+      ev.preventDefault();
+      if (full) break;
+      if (theaterOn()) setTheater(false);
+      $('stream-search').focus(); $('stream-search').select();
+      break;
     case '?': ev.preventDefault(); showShortcuts(); break;
-    case 'g': case 'G': if (S.mode === 'live') { ev.preventDefault(); openGuide(); } break;
+    case 'g': case 'G': if (!full && S.view === 'live') { ev.preventDefault(); openGuide(); } break;
+    case 'h': case 'H': if (!full) { ev.preventDefault(); setView('home'); } break;
     case 'Escape':
       if (tracksMenuOpen()) closeTracksMenu();
-      else if (S.seriesView && !theaterOn()) closeSeries();
-      else if (theaterOn() && !document.fullscreenElement) setTheater(false);
+      else if (wrap.classList.contains('fs-fake')) exitFullscreen();
+      else if (full && !fsElement()) closePlayer();
+      else if (theaterOn() && !fsElement()) setTheater(false);
       break;
     default: break;
   }
@@ -91,6 +135,8 @@ function showUpdate(u) {
   b.textContent = `Nuova versione ${u.version} disponibile`;
   b.title = `Versione installata: ${u.current}`;
   b.classList.remove('hidden');
+  // il pulsante sta nel menu dell'account: un punto sull'avatar lo segnala
+  $('update-dot').classList.remove('hidden');
 }
 
 async function checkUpdate(manual) {
@@ -137,7 +183,7 @@ $('set-update').addEventListener('click', () => checkUpdate(true));
 
 // ------------------------------------------------------------------ avvio
 async function init() {
-  updateModeButtons();
+  updateNav();
   updatePlayButton();
   updatePassToggle();
   updateFavButton();
@@ -150,6 +196,9 @@ async function init() {
     showLoginError('API Tauri non disponibile: questa pagina va aperta dall\'app desktop (cargo tauri dev).');
     return;
   }
+  // Android/TV: viewport, telecomando e tasto Indietro prima di disegnare il resto
+  await initAndroid();
+  if (!PLATFORM.android) invoke('platform_info').then((p) => { PLATFORM.device = p.device || ''; }).catch(() => {});
   if (!window.mpegts || !window.Hls) {
     toast('Librerie video mancanti: esegui "npm run build:ui" nella cartella del progetto.', 'error');
   }
@@ -172,6 +221,8 @@ async function init() {
     await invoke('save_credentials', { server: local.server, username: local.username, password: local.password }).catch(() => {});
   }
   lsDel(CREDS_KEY);
+  // playlist arrivate da altri dispositivi prima dell'elenco (al massimo qualche secondo)
+  await initSync();
   await refreshAccounts();
   // accesso automatico all'ultima playlist usata; senza, l'elenco delle playlist (o il form se è vuoto)
   if (saved && saved.server && saved.username && saved.password) {

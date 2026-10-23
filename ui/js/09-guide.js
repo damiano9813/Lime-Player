@@ -4,7 +4,9 @@
 // la offre, la guida del singolo canale (get_epg_day), chiesta solo per le righe visibili.
 'use strict';
 
-const GUIDE_ROW_H = 56, GUIDE_HEAD_H = 34, GUIDE_CH_W = 224, GUIDE_OVERSCAN = 10;
+const GUIDE_ROW_H = 56, GUIDE_HEAD_H = 34, GUIDE_OVERSCAN = 10;
+// colonna dei canali: più stretta sul telefono in verticale (09e-tv.js), dove conta lo spazio per gli orari
+const guideChW = () => (document.documentElement.classList.contains('mobile') ? 120 : 224);
 // 4 px al minuto: mezz'ora = 120 px, un giorno ≈ 5760 px
 const GUIDE_PX = 4 / 60, GUIDE_TICK = 1800;
 const gScroller = $('guide-scroller'), gCanvas = $('guide-canvas'), gHead = $('guide-head'), gRows = $('guide-rows'), gNow = $('guide-now-line');
@@ -29,7 +31,7 @@ function resetGuide() {
 
 // ------------------------------------------------------------------ apertura e chiusura
 function openGuide() {
-  if (G.open || S.mode !== 'live' || !S.creds) return;
+  if (G.open || S.mode !== 'live' || S.view !== 'live' || !S.creds) return;
   if (G.acct !== S.acct) { resetGuide(); G.acct = S.acct; }
   if (theaterOn()) setTheater(false);
   closeTracksMenu();
@@ -97,7 +99,7 @@ function scrollGuideToNow() {
   if (today !== -1 && today !== G.day) { G.day = today; buildGuideDays(); renderGuideFrame(); }
   const d = guideDay();
   const x = (nowSec() - d.from) * GUIDE_PX;
-  gScroller.scrollLeft = Math.max(0, x - Math.max(0, gScroller.clientWidth - GUIDE_CH_W) * 0.2);
+  gScroller.scrollLeft = Math.max(0, x - Math.max(0, gScroller.clientWidth - guideChW()) * 0.2);
 }
 
 // ------------------------------------------------------------------ disegno
@@ -106,7 +108,7 @@ const guideWidth = (d) => (d.to - d.from) * GUIDE_PX;
 function renderGuideFrame() {
   const d = guideDay();
   const w = guideWidth(d), total = S.filtered.length;
-  gCanvas.style.width = GUIDE_CH_W + w + 'px';
+  gCanvas.style.width = guideChW() + w + 'px';
   gCanvas.style.height = GUIDE_HEAD_H + total * GUIDE_ROW_H + 'px';
   renderGuideHead();
   const cat = categoryLabel(S.mode, S.selectedCat[S.mode]);
@@ -122,16 +124,16 @@ function renderGuideHead() {
   const d = guideDay(), now = nowSec();
   const w = guideWidth(d);
   gHead.style.height = GUIDE_HEAD_H + 'px';
-  gHead.style.width = GUIDE_CH_W + w + 'px';
+  gHead.style.width = guideChW() + w + 'px';
   const ticks = XPCore.timeTicks(d.from, d.to, GUIDE_TICK).map((t) =>
     `<span class="absolute top-0 h-full flex items-center pl-2 border-l border-line text-[11px] font-semibold tabular-nums text-ink-subtle" style="left:${(t - d.from) * GUIDE_PX}px">${fmtClock(t)}</span>`).join('');
   const isToday = now >= d.from && now < d.to;
   const nowTag = isToday ? `<span class="badge badge-live absolute top-1/2 -translate-x-1/2 -translate-y-1/2 z-10" style="left:${(now - d.from) * GUIDE_PX}px">${fmtClock(now)}</span>` : '';
-  gHead.innerHTML = `<div class="sticky left-0 z-20 shrink-0 flex items-center px-3 bg-s1 border-r border-line overline" style="width:${GUIDE_CH_W}px">${escapeHtml(d.label)}</div>
+  gHead.innerHTML = `<div class="sticky left-0 z-20 shrink-0 flex items-center px-3 bg-s1 border-r border-line overline" style="width:${guideChW()}px">${escapeHtml(d.label)}</div>
     <div class="relative flex-1">${ticks}${nowTag}</div>`;
   gNow.classList.toggle('hidden', !isToday);
   if (isToday) {
-    gNow.style.left = GUIDE_CH_W + (now - d.from) * GUIDE_PX - 1 + 'px';
+    gNow.style.left = guideChW() + (now - d.from) * GUIDE_PX - 1 + 'px';
     gNow.style.height = GUIDE_HEAD_H + S.filtered.length * GUIDE_ROW_H + 'px';
   }
 }
@@ -143,7 +145,7 @@ function renderGuideRows(force) {
   // si ridisegna solo quando la parte visibile esce da quella già disegnata (righe e orari in più
   // attorno): in orizzontale solo i blocchi entro una vista prima e dopo
   const vis = XPCore.visibleRows(gScroller.scrollTop, viewH, GUIDE_ROW_H, total, 0);
-  const left = gScroller.scrollLeft, viewW = Math.max(400, gScroller.clientWidth - GUIDE_CH_W);
+  const left = gScroller.scrollLeft, viewW = Math.max(400, gScroller.clientWidth - guideChW());
   const inside = vis.start >= G.start && vis.end <= G.end && G.span && left >= G.span[0] && left + viewW <= G.span[1];
   if (!force && inside) return;
   const { start, end } = XPCore.visibleRows(gScroller.scrollTop, viewH, GUIDE_ROW_H, total, GUIDE_OVERSCAN);
@@ -190,15 +192,15 @@ function guideRowHtml(ch, i, d, now, w, span) {
   });
   if (!blocks.length) {
     const msg = !entries ? 'Caricamento della guida…' : 'Nessun programma nella guida per questo giorno';
-    progs = `<span class="sticky inline-flex items-center h-full px-3 text-[11px] font-medium text-ink-subtle" style="left:${GUIDE_CH_W}px">${msg}</span>`;
+    progs = `<span class="sticky inline-flex items-center h-full px-3 text-[11px] font-medium text-ink-subtle" style="left:${guideChW()}px">${msg}</span>`;
   }
   const icon = ch.stream_icon && /^https?:\/\//i.test(ch.stream_icon)
     ? `<img src="${escapeHtml(ch.stream_icon)}" loading="lazy" decoding="async" referrerpolicy="no-referrer" class="w-full h-full object-contain" alt=""><span class="hidden">${escapeHtml(initials(ch.name))}</span>`
     : `<span>${escapeHtml(initials(ch.name))}</span>`;
   const lead = playing ? ICONS.eq.replace('class="eq"', `class="eq${video.paused ? ' paused' : ''}"`) : escapeHtml(ch.num || i + 1);
   const archive = String(ch.tv_archive) === '1' ? `<span class="shrink-0 text-ink-subtle" title="Catch-up: programmi passati disponibili">${ICONS.rewind}</span>` : '';
-  return `<div class="grow absolute left-0 flex" style="top:${GUIDE_HEAD_H + i * GUIDE_ROW_H}px;height:${GUIDE_ROW_H}px;width:${GUIDE_CH_W + w}px">
-    <div data-gch="${i}" class="gch ${playing ? 'on' : ''} sticky left-0 z-10 shrink-0 flex items-center gap-2.5 pl-2 pr-3 cursor-pointer" style="width:${GUIDE_CH_W}px" title="${escapeHtml(ch.name)}: clic per guardare">
+  return `<div class="grow absolute left-0 flex" style="top:${GUIDE_HEAD_H + i * GUIDE_ROW_H}px;height:${GUIDE_ROW_H}px;width:${guideChW() + w}px">
+    <div data-gch="${i}"${PLATFORM.tv ? ' tabindex="0"' : ''} class="gch ${playing ? 'on' : ''} sticky left-0 z-10 shrink-0 flex items-center gap-2.5 pl-2 pr-3 cursor-pointer" style="width:${guideChW()}px" title="${escapeHtml(ch.name)}: clic per guardare">
       <span class="w-7 flex justify-end text-[11px] font-semibold tabular-nums text-ink-subtle shrink-0">${lead}</span>
       <div class="logo-tile w-9 h-9 rounded-lg shrink-0 overflow-hidden flex items-center justify-center text-[11px] font-extrabold text-ink-muted">${icon}</div>
       <span class="flex-1 min-w-0 text-sm truncate ${playing ? 'text-accent-ink font-bold' : 'text-ink font-medium'}">${escapeHtml(ch.name)}</span>

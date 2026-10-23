@@ -1,6 +1,8 @@
 # Xtream Player (Tauri v2)
 
-Player IPTV desktop per Windows compatibile con le API Xtream Codes.
+Player IPTV compatibile con le API Xtream Codes per **Windows**, **Android** (telefoni e tablet) e
+**Android TV / Google TV**, con la stessa interfaccia su tutti i dispositivi e la
+[sincronizzazione](#sincronizzazione) di playlist, preferiti e punti di ripresa.
 
 ## Struttura
 
@@ -11,33 +13,49 @@ Lime-Player/
 ├─ scripts/fetch-mpv.mjs         scarica libmpv-2.dll (versione fissata, SHA-256)
 ├─ scripts/fix-updater-json.mjs  link di download diretti in latest.json (workflow di release)
 ├─ tests/core.test.js            test della logica pura del frontend (node --test)
+├─ tests/sync.test.js            test di crittografia e conflitti della sincronizzazione
+├─ supabase/schema.sql           tabelle e funzioni del server di sincronizzazione
 ├─ ui/
 │  ├─ index.html                 markup e stili
 │  ├─ vendor/                    generata: app.css (Tailwind), mpegts.js, hls.js
 │  └─ js/
 │     ├─ core.js                 logica pura testabile: codec, percorsi, URL, buffer adattivo, griglia guida
+│     ├─ sync-core.js            sincronizzazione: codici, chiavi, cifratura, abbinamento, conflitti
+│     ├─ sync-config.js          URL e chiave pubblica del progetto Supabase
 │     ├─ 01-base.js              utilità, toast, modale, scorciatoie, icone
 │     ├─ 02-state.js             costanti e stato condiviso
 │     ├─ 03-login.js             playlist salvate, accesso, cambio di playlist, account
-│     ├─ 04-library.js           Live/Film, categorie, liste, ricerca, preferiti, recenti
+│     ├─ 04-library.js           lista della Live TV, cataloghi, preferiti, recenti
 │     ├─ 05-list.js              lista virtualizzata
 │     ├─ 06-player.js            player del browser, conversione ffmpeg, buffer adattivo
 │     ├─ 06b-mpv.js              motore mpv: rettangolo del video, comandi, eventi
-│     ├─ 07-controls.js          controlli del player e pannello info
-│     ├─ 08-content.js           guida TV, serie ed episodi, catch-up, scheda film
+│     ├─ 07-controls.js          controlli del player, player a tutta finestra, pannello info
+│     ├─ 08-content.js           guida TV, episodi, catch-up, schede di film e serie
 │     ├─ 09-guide.js             guida TV a griglia
+│     ├─ 09b-browse.js           barra in alto, Home/Film/Serie a righe, griglie, ricerca
+│     ├─ 09c-detail.js           scheda di film e serie, stagioni ed episodi
+│     ├─ 09d-sync.js             sincronizzazione: ciclo, playlist, abbinamento, impostazioni
+│     ├─ 09e-tv.js               Android: tasto Indietro, telecomando, schermo intero, viewport
 │     └─ 10-main.js              tastiera e avvio
 └─ src-tauri/
-   ├─ Cargo.toml, build.rs, tauri.conf.json, capabilities/, icons/
+   ├─ Cargo.toml, build.rs, tauri.conf.json, tauri.android.conf.json, capabilities/, icons/
+   ├─ gen/android/               progetto Android (Gradle); il codice nostro è in
+   │                             app/src/main/java/com/xtreamplayer/app/NativePlugin.kt
    ├─ binaries/                  generata: ffmpeg/ffprobe per l'installer (non versionata)
    └─ src/
-      ├─ main.rs                 avvio e registrazione dei comandi
+      ├─ main.rs                 eseguibile desktop (chiama lib.rs)
+      ├─ lib.rs                  avvio e registrazione dei comandi, comune a desktop e Android
+      ├─ platform.rs             informazioni sul dispositivo, link esterni, tasto Indietro
+      ├─ native.rs               Android: ponte verso il plugin Kotlin (eventi e comandi)
+      ├─ mpv_android.rs          Android: stessi comandi di mpv.rs, eseguiti da ExoPlayer
+      ├─ updater_android.rs      Android: nuova versione = APK allegato alla release GitHub
       ├─ xtream.rs               client Xtream Codes, modelli tolleranti, comandi
       ├─ catalog.rs              guida TV (base64), serie con episodi, scheda film
       ├─ guide.rs                guida completa da xmltv.php (download e analisi in streaming)
       ├─ cache.rs                cache su disco delle liste
       ├─ state.rs                stato condiviso
-      ├─ creds.rs                credenziali (password in Gestione credenziali di Windows)
+      ├─ creds.rs                credenziali (password in Gestione credenziali di Windows,
+      │                          su Android in un file nella cartella privata dell'app)
       ├─ updater.rs              aggiornamenti dalle release GitHub
       ├─ proxy.rs                proxy locale (CORS, Range, playlist HLS)
       ├─ media.rs                rilevamento ffmpeg/encoder, ffprobe, argomenti
@@ -148,7 +166,7 @@ l'installer `Xtream Player_<versione>_x64-setup.exe` con la sua firma `.sig`. L'
 All'avvio l'app legge `latest.json` dall'ultima release di GitHub
 (`https://github.com/damiano9813/Lime-Player/releases/latest/download/latest.json`, in `plugins.updater` di
 `tauri.conf.json`); se c'è una versione più recente compare un avviso e il pulsante
-"Nuova versione … disponibile" nella barra laterale. "Aggiorna ora" ferma lo stream, scarica
+"Nuova versione … disponibile" nel menu dell'account (un punto sull'avatar lo segnala). "Aggiorna ora" ferma lo stream, scarica
 l'installer, ne verifica la firma con la chiave pubblica (`pubkey`) e lo avvia; l'app si riavvia
 aggiornata. Nelle Impostazioni, "Cerca aggiornamenti" ripete il controllo.
 
@@ -198,13 +216,108 @@ controlli, OSD, menu e finestre di dialogo HTML restano sopra il video. Il retta
 mpv legge direttamente l'URL del provider (User-Agent `IPTVSmartersPro`, riconnessione
 automatica), decodifica in hardware, cambia tracce audio e sottotitoli senza riavvii (anche i
 sottotitoli a immagine e quelli dei live) e non ha bisogno di proxy, conversione ffmpeg o buffer
-adattivo. Il buffer del live dipende dal preset: Minimo 1 s, Medio 2 s, Stabile 4 s. Il motore
+adattivo. Il buffer del live dipende dal preset: Minimo 1 s, Medio 1,5 s, Stabile 2 s. Il motore
 precedente (mpegts.js/hls.js nel browser) resta nelle Impostazioni ("Motore: Browser") ed è
 l'unico con il Picture in Picture; si usa da solo se la DLL manca.
 
 Le build di shinchiro restano online circa due mesi: quando quella fissata sparisce,
 `npm run fetch:mpv` fallisce e va aggiornata con una più recente (archivio `mpv-dev-x86_64`
 senza `-v3`, che richiederebbe AVX2), cambiando `RELEASE`, `ARCHIVE` e `SHA256`.
+
+## Android e Android TV
+
+Un solo APK per telefoni, tablet e TV (`com.xtreamplayer.app`, Android 7.0 o successivo). La
+pagina è la stessa del desktop: la WebView la impagina larga 1100 px CSS (1280 sulla TV) e la
+scala sullo schermo, a tutto schermo. Sul telefono in verticale c'è un layout dedicato (classe
+`html.mobile`, 09e-tv.js): sezioni in una barra in basso, nella Live TV il player in alto con le
+categorie in una fila scorrevole e la lista sotto, schede e Impostazioni a tutto schermo. Girando il
+telefono mentre si guarda un canale il video va a schermo intero; film ed episodi passano da soli in
+orizzontale e tornano liberi alla chiusura del player. Differenze rispetto a Windows:
+
+- **Motore**: al posto di mpv c'è **ExoPlayer** (Media3, `NativePlugin.kt`), disegnato sotto la
+  WebView trasparente come mpv sotto WebView2 e pilotato dagli stessi comandi ed eventi
+  (`mpv_android.rs`), quindi 06b-mpv.js non cambia. Decodifica hardware, HLS e MPEG-TS diretti,
+  audio AC3/E-AC3/DTS/MP2 anche senza decoder di sistema (decoder ffmpeg di
+  [jellyfin-androidx-media](https://github.com/jellyfin/jellyfin-androidx-media), LGPL).
+  Con "Uscita audio: Originale" l'audio multicanale va in bitstream all'amplificatore, se lo
+  supporta. Il motore "Browser" (mpegts.js e hls.js) resta disponibile.
+- **Niente ffmpeg esterno né Picture in Picture**: la sezione "Conversione video" non c'è.
+- **Telecomando** (09e-tv.js): le frecce spostano lo stato attivo sull'elemento più vicino, OK
+  attiva, Indietro risale di un livello come Esc e al primo livello manda l'app in secondo piano.
+  Guardando un contenuto le frecce restano quelle del desktop (canale, volume, ±10 s); OK mostra
+  i controlli. Tasti media, Canale +/− e Play/Pausa funzionano ovunque.
+- **Player esterno**: si apre il selettore di Android (VLC, MX Player, Just Player…).
+- **Aggiornamenti**: l'app controlla l'ultima release GitHub; se ha un `.apk` allegato con
+  versione più alta, "Aggiorna ora" apre il download e l'installazione la conferma l'utente.
+
+### Build
+
+Prerequisiti: JDK 17, Android SDK (platform 35+, build-tools) e NDK 27, con `JAVA_HOME`,
+`ANDROID_HOME` e `NDK_HOME`, più i target Rust:
+
+```powershell
+rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
+```
+
+La CLI di Tauri collega la libreria Rust in `jniLibs` con un collegamento simbolico: su Windows
+serve la **Modalità sviluppatore** (Impostazioni › Sistema › Per sviluppatori).
+
+```powershell
+cargo tauri android dev                          # emulatore o dispositivo collegato via adb
+cargo tauri android build --apk --target aarch64 # APK per telefoni e TV ARM a 64 bit
+cargo tauri android build --apk                  # APK universale (tutte le architetture)
+```
+
+L'APK di release va firmato. Crea una keystore una volta:
+
+```powershell
+keytool -genkey -v -keystore $env:USERPROFILE\.tauri\xtream-player.jks -keyalg RSA -keysize 2048 -validity 10000 -alias xtream
+```
+
+e indicala in `src-tauri/gen/android/keystore.properties` (non versionato, letto da
+`app/build.gradle.kts`):
+
+```properties
+storeFile=C:/Users/<utente>/.tauri/xtream-player.jks
+storePassword=...
+keyAlias=xtream
+keyPassword=...
+```
+
+Senza questo file la build di release resta non firmata e Android non la installa. La stessa
+keystore va usata per tutte le versioni: con un'altra firma l'aggiornamento non si installa.
+
+Gli APK sono in `src-tauri/gen/android/app/build/outputs/apk/`. Per installarlo su una TV:
+`adb connect <ip-della-tv>` (debug di rete attivo nelle Opzioni sviluppatore) e
+`adb install -r <file>.apk`, oppure copialo con una chiavetta e un file manager.
+
+## Sincronizzazione
+
+PC, telefono e TV possono condividere le **playlist (con le password)**, i **preferiti**, i
+**recenti**, i **punti di ripresa** di film ed episodi, l'ultimo episodio visto di ogni serie e le
+lingue preferite. Tutto viene cifrato sul dispositivo (AES-GCM) con chiavi derivate da un
+**codice di sincronizzazione** di 160 bit che il server non vede mai: sul server ci sono solo
+dati cifrati e identificativi opachi. Per ogni voce vince la modifica più recente; alla prima
+attivazione preferiti e recenti dei due dispositivi si uniscono.
+
+Il server è un progetto [Supabase](https://supabase.com) (il piano gratuito basta):
+
+1. crea un progetto, apri **SQL Editor**, incolla `supabase/schema.sql` ed eseguilo;
+2. in **Project Settings › API Keys** copia *Project URL* e la chiave pubblicabile (`sb_publishable_…`, va bene anche la vecchia *anon*);
+3. inseriscili in `ui/js/sync-config.js` e ricompila l'app (desktop e Android).
+
+Le tabelle non sono accessibili con la chiave *anon*: si passa solo dalle funzioni dello schema,
+che verificano il segreto del gruppo (ne conoscono solo lo SHA-256).
+
+Uso: **Impostazioni › Sincronizzazione › Attiva › Nuovo gruppo** sul primo dispositivo. Sugli
+altri, **Ricevi da un altro dispositivo** (anche dalla schermata delle playlist, comodo su una TV
+appena installata): compare un codice di 8 cifre da inserire sul dispositivo già collegato in
+**Collega un dispositivo**. Il codice viaggia cifrato con una chiave effimera ECDH ed entrambi gli
+schermi mostrano le stesse 6 cifre di verifica da confermare. In alternativa si può inserire a
+mano il codice di sincronizzazione (**Mostra codice** sul primo dispositivo). La
+sincronizzazione gira all'avvio, ogni minuto, qualche secondo dopo ogni modifica e quando l'app
+torna in primo piano. Il codice di sincronizzazione sta nel vault delle password, non in
+localStorage.
 
 ## ffmpeg e licenza
 
@@ -228,7 +341,7 @@ PATH.
 - Prima di aprire il player esterno lo stream interno viene chiuso, per non superare il limite di connessioni dell'account.
 - **Più playlist**: si possono salvare più account Xtream, ciascuno con un nome facoltativo. La
   schermata iniziale elenca le playlist salvate (clic per aprirla, cestino per rimuoverla) e
-  "Aggiungi playlist" apre il form. Nella barra laterale un selettore passa da una playlist
+  "Aggiungi playlist" apre il form. Nel menu dell'account (avatar in alto a destra) un selettore passa da una playlist
   all'altra e "Gestisci playlist" torna all'elenco; all'avvio si riapre l'ultima usata, a meno che
   si sia tornati all'elenco prima di chiudere l'app.
 - **Credenziali**: le password stanno in Gestione credenziali di Windows (Credenziali generiche,
@@ -259,8 +372,14 @@ PATH.
   ciascuno dei due tipi, quelli oltre i 500 più recenti.
 - **Cache delle liste**: categorie e liste vengono salvate in `%LOCALAPPDATA%\com.xtreamplayer.desktop\lists\`.
   All'avvio si mostrano subito quelle salvate (se hanno meno di 24 ore) e si aggiornano in
-  background se hanno più di 10 minuti; senza rete si usa comunque l'ultima lista. Il pulsante
-  di aggiornamento scarica sempre dal server; rimuovere la playlist cancella anche la sua cache.
+  background se hanno più di 10 minuti; senza rete si usa comunque l'ultima lista. Rimuovere la
+  playlist cancella anche la sua cache.
+- **Aggiornamento delle liste**: una volta al giorno l'app riscarica dal provider categorie e liste
+  complete di Live TV, film e serie, una sezione alla volta e partendo da quella aperta; le liste
+  aperte si aggiornano senza perdere posizione e ricerca. Se l'app era chiusa, il controllo parte
+  pochi secondi dopo l'avvio, poi ogni 15 minuti e quando l'app torna in primo piano. Lo stesso
+  aggiornamento si avvia a mano dal pulsante in alto o da "Aggiorna liste" nel menu dell'account,
+  che mostra quando è stato fatto l'ultimo (sul telefono in verticale c'è solo il menu).
 - **Raffica iniziale**: alla connessione molti server inviano in pochi secondi 10-30 s di video
   già trasmesso, poi proseguono in tempo reale. Con il preset "Stabile" (predefinito, `keep=all`)
   il proxy la passa subito tutta: il video parte in meno di un secondo con decine di secondi di
@@ -321,15 +440,31 @@ PATH.
     locale scritta in `xmltv.php`. È rivedibile un programma finito di un canale con
     `tv_archive`, iniziato entro `tv_archive_duration` giorni (3 se assente), come nel pannello
     del catch-up.
-- **Serie TV**: terza sezione con stagioni ed episodi; ripresa per episodio, episodio
-  successivo automatico, ↑/↓ tra gli episodi. Preferiti e recenti si riferiscono alla serie.
+- **Interfaccia in stile streaming**: barra in alto con Home, Live TV, Film e Serie TV, ricerca,
+  impostazioni e menu dell'account. Home, Film e Serie mostrano un titolo in evidenza (sfondo e
+  trama da `get_vod_info` / `get_series_info`) e righe di locandine che scorrono in orizzontale:
+  Continua a guardare, La mia lista (i preferiti), aggiunti di recente (`added` dei film,
+  `last_modified` delle serie) e una riga per categoria, disegnata quando ci si avvicina.
+  "Vedi tutti" e il menu "Categorie" aprono la griglia della categoria. La Home aggiunge gli
+  ultimi canali visti e i canali preferiti con il programma in onda. La ricerca in alto cerca
+  insieme film, serie e canali nei cataloghi completi (caricati dalla cache su disco). La Live
+  TV resta lista dei canali con player, pannello info, catch-up e guida a griglia; con "Più
+  categorie…" (sotto Recenti) si guardano insieme i canali di più categorie, nell'ordine del provider.
+- **Scheda e player a tutta finestra**: un clic su una locandina apre la scheda (sfondo, trama,
+  cast, "Riproduci" o "Riprendi", "Ricomincia", La mia lista, titoli simili; per le serie
+  stagioni ed episodi con avanzamento). Film ed episodi si guardano a tutta finestra: la freccia
+  in alto o Esc salvano la posizione e tornano alla scheda; ↑/↓ regolano il volume, N passa
+  all'episodio successivo. Canali e catch-up restano nel player della Live TV; un canale continua
+  mentre si guarda il catalogo e la barra in alto lo segnala.
+- **Serie TV**: ripresa per episodio, episodio successivo automatico. Preferiti e recenti si
+  riferiscono alla serie.
 - **Catch-up**: per i canali con archivio (icona accanto al nome) il pannello "Rivedi i
   programmi passati" elenca i programmi degli ultimi giorni; si aprono con
   `/timeshift/<utente>/<password>/<minuti>/<AAAA-MM-GG:HH-MM>/<id>.ts` e si riproducono come un film.
 - **Scheda film**: trama, genere, anno, regia, cast, durata e locandina (`get_vod_info`).
   Se ffprobe non c'è o l'analisi non riesce, i codec dichiarati dal pannello (film ed episodi)
   bastano a scegliere il percorso di conversione.
-- **Impostazioni** (ingranaggio nella barra laterale): buffer e modalità dei live, uscita audio
+- **Impostazioni** (ingranaggio nella barra in alto): buffer e modalità dei live, uscita audio
   (Stereo / Originale), lingua audio e sottotitoli preferite, qualità della conversione, player
   esterno preferito (mpv o VLC), "Svuota cache liste", stato di ffmpeg e dell'encoder con nuovo
   rilevamento. Salvate in `localStorage` (`xp.settings`, `xp.latMode`, `xp.liveFormat`).

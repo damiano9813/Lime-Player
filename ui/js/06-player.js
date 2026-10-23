@@ -24,9 +24,10 @@ function resumeKey(item) {
   if (!item || item._catchup) return null;
   return ak((item._kind === 'episode' ? 'resume.ep.' : 'resume.') + item.stream_id);
 }
-// secondi salvati; la data del salvataggio serve a cancellare le voci vecchie (pruneStoredData)
+// secondi salvati; la data del salvataggio serve a cancellare le voci vecchie (pruneStoredData),
+// la durata alla barra di avanzamento della Home
 const getResume = (rk) => (rk ? XPCore.resumeSeconds(lsGet(rk, 0)) : 0);
-const setResume = (rk, sec) => lsSet(rk, { p: sec, t: Date.now() });
+const setResume = (rk, sec, dur) => lsSet(rk, dur > 0 && isFinite(dur) ? { p: sec, t: Date.now(), d: Math.round(dur) } : { p: sec, t: Date.now() });
 function proxied(url, opts) { return XPCore.proxyUrl(S.proxy, url, opts); }
 // qualità e uscita audio vengono dalle impostazioni
 function transcodeUrl(url, r, opts) { return XPCore.transcodeUrl(S.proxy, url, r, { q: S.settings.quality, ac: S.settings.audioOut, ...opts }); }
@@ -418,7 +419,10 @@ function osd(html) {
   clearTimeout(osdCenterTimer);
   osdCenterTimer = setTimeout(() => el.classList.add('opacity-0'), 800);
 }
-function setHint(msg) { const el = $('info-hint'); el.textContent = msg || ''; el.classList.toggle('hidden', !msg); }
+// nel pannello info della Live TV e, a tutta finestra, sopra il video
+function setHint(msg) {
+  ['info-hint', 'osd-hint'].forEach((id) => { const el = $(id); el.textContent = msg || ''; el.classList.toggle('hidden', !msg); });
+}
 function showError(msg) {
   setSpinner(false);
   $('player-error-text').textContent = msg;
@@ -442,8 +446,10 @@ function resetPlayerUi() {
   showOsdTop(null);
   clearContentInfo();
   $('time').textContent = '';
+  mountPlayer(false);
   updatePlayButton();
   updateFavButton();
+  updateNowPill();
   renderList(true);
   updateLocateButton();
 }
@@ -474,7 +480,13 @@ function renderInfo(item, mode) {
   ['btn-external', 'btn-copy', 'btn-fav'].forEach((id) => { $(id).disabled = false; });
   $('seek-row').classList.toggle('hidden', mode === 'live');
   $('live-badge').classList.toggle('hidden', mode !== 'live');
-  ['btn-prev', 'btn-next'].forEach((id) => $(id).classList.toggle('hidden', mode !== 'live'));
+  // canale precedente e successivo; negli episodi, quelli della serie
+  const ep = item._kind === 'episode';
+  ['btn-prev', 'btn-next'].forEach((id) => $(id).classList.toggle('hidden', mode !== 'live' && !ep));
+  $('btn-prev').title = ep ? 'Episodio precedente' : 'Canale precedente (↑)';
+  $('btn-next').title = ep ? 'Episodio successivo' : 'Canale successivo (↓)';
+  $('btn-prev').setAttribute('aria-label', ep ? 'Episodio precedente' : 'Canale precedente');
+  $('btn-next').setAttribute('aria-label', ep ? 'Episodio successivo' : 'Canale successivo');
   ['btn-back10', 'btn-fwd10'].forEach((id) => $(id).classList.toggle('hidden', mode !== 'vod'));
   $('btn-tracks').classList.remove('hidden');
   updateFavButton();
@@ -541,7 +553,12 @@ function playItem(item, mode, opts) {
   P.vodTranscoded = false;
   P.vodOffset = 0;
   P.vodDuration = opts.duration && isFinite(opts.duration) ? opts.duration : NaN;
+  // film ed episodi a tutta finestra; canali e catch-up nella Live TV, che si mostra se serve
+  const full = isFullItem(item, mode);
+  mountPlayer(full);
+  if (!full && S.view !== 'live') setView('live');
   renderInfo(item, mode);
+  updateNowPill();
   if (!opts.keepRetries) {
     // nei recenti vanno le serie (non i singoli episodi); il catch-up non si registra
     if (item._kind === 'episode') { if (item._series) pushRecent('series', item._series); }
@@ -1008,7 +1025,7 @@ video.addEventListener('timeupdate', () => {
   if (S.current && S.currentMode === 'vod' && video.currentTime > 0) {
     const now = Date.now();
     const rk = resumeKey(S.current);
-    if (rk && now - lastResumeSave > 5000) { lastResumeSave = now; setResume(rk, Math.floor(currentPlayTime())); }
+    if (rk && now - lastResumeSave > 5000) { lastResumeSave = now; setResume(rk, Math.floor(currentPlayTime()), currentDuration()); }
   }
 });
 video.addEventListener('progress', () => updateTimeUi());

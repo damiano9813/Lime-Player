@@ -577,21 +577,43 @@ pub fn mpv_seek(app: AppHandle, secs: f64) -> Result<(), String> {
 /// Rettangolo in pixel fisici, relativo all'area client della finestra; `None` nasconde.
 fn show_window(hwnd: isize, rect: Option<(i32, i32, i32, i32)>) {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        SetWindowPos, HWND_BOTTOM, SWP_HIDEWINDOW, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
-        SWP_NOZORDER, SWP_SHOWWINDOW,
+        GetWindow, SetWindowPos, GW_CHILD, GW_HWNDNEXT, HWND_BOTTOM, SWP_ASYNCWINDOWPOS,
+        SWP_HIDEWINDOW, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW,
     };
-    // SAFETY: hwnd è la finestra del video creata da questo modulo e mai distrutta
+    // SAFETY: hwnd è la finestra del video creata da questo modulo e mai distrutta; le figlie
+    // sono quelle che mpv crea dentro `wid`
     unsafe {
         match rect {
-            Some((x, y, w, h)) => SetWindowPos(
-                hwnd as _,
-                HWND_BOTTOM,
-                x,
-                y,
-                w.max(1),
-                h.max(1),
-                SWP_NOACTIVATE | SWP_SHOWWINDOW,
-            ),
+            Some((x, y, w, h)) => {
+                SetWindowPos(
+                    hwnd as _,
+                    HWND_BOTTOM,
+                    x,
+                    y,
+                    w.max(1),
+                    h.max(1),
+                    SWP_NOACTIVATE | SWP_SHOWWINDOW,
+                );
+                // mpv disegna in una sua finestra figlia e non sempre si accorge che `wid` ha
+                // cambiato misura (a video fermo, o con più cambi ravvicinati come entrando e
+                // uscendo dallo schermo intero): resta con la misura vecchia e l'immagine si
+                // deforma. Ridimensionarla qui le manda WM_SIZE e mpv ridisegna subito.
+                // Asincrono: la finestra è del thread di mpv, non si aspetta la sua risposta.
+                let mut child = GetWindow(hwnd as _, GW_CHILD);
+                while !child.is_null() {
+                    SetWindowPos(
+                        child,
+                        std::ptr::null_mut(),
+                        0,
+                        0,
+                        w.max(1),
+                        h.max(1),
+                        SWP_NOZORDER | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS,
+                    );
+                    child = GetWindow(child, GW_HWNDNEXT);
+                }
+                1
+            }
             None => SetWindowPos(
                 hwnd as _,
                 std::ptr::null_mut(),

@@ -57,6 +57,8 @@
   #seek-row:hover input[type=range].xr::-webkit-slider-runnable-track { height: 6px; }
   #seek-row:hover input[type=range].xr::-webkit-slider-thumb { margin-top: -4px; }
   #player-wrap:fullscreen { max-height: none; width: 100vw; height: 100vh; border-radius: 0; border: 0; aspect-ratio: auto; }
+  /* Android: schermo intero simulato (la WebView non ha l'API Fullscreen) */
+  #player-wrap.fs-fake { position: fixed; inset: 0; z-index: 80; max-height: none; width: 100vw; height: 100vh; border-radius: 0; border: 0; aspect-ratio: auto; }
   #player-wrap { container-type: inline-size; }
   /* player stretto (finestra piccola): si nascondono i controlli secondari, raggiungibili da tastiera */
   @container (max-width: 640px) { #volume { width: 4rem; } #btn-stop, #btn-pip { display: none; } }
@@ -64,9 +66,9 @@
   #player-wrap.idle { cursor: none; }
   #player-wrap.idle #controls { opacity: 0; pointer-events: none; }
   #osd-top { display: none; }
-  #player-wrap:fullscreen #osd-top.on, .theater #osd-top.on { display: flex; }
+  #player-wrap:fullscreen #osd-top.on, #player-wrap.fs-fake #osd-top.on, .theater #osd-top.on { display: flex; }
   #player-wrap.idle #osd-top:not(.force) { opacity: 0; }
-  .theater #sidebar, .theater #list-col { display: none; }
+  .theater #sidebar, .theater #list-col, .theater:not(.view-browse) #topbar { display: none; }
   /* guida TV a griglia: prende il posto di lista e player finché è aperta */
   .guide-open #list-col, .guide-open main { display: none; }
   .gch { background: var(--surface-200); border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
@@ -84,6 +86,135 @@
   .gp-icon { position: absolute; top: 6px; right: 6px; color: var(--ink-subtle); }
   .gp-key { display: inline-block; width: 10px; height: 10px; border-radius: 3px; border: 1px solid var(--line); vertical-align: -1px; }
   .theater #player-wrap { max-height: calc(100vh - 12rem); }
+  /* ---------------------------------------------------------------- stile streaming */
+  :root { --gutter: clamp(20px, 3.6vw, 60px); --card-w: clamp(128px, 12.4vw, 230px); --wide-w: clamp(220px, 20vw, 340px); }
+  .btn-play { background: #fff; color: #000; }
+  .btn-play:hover:not(:disabled) { background: rgba(255, 255, 255, .78); }
+  .btn-glass { background: rgba(109, 109, 110, .7); color: #fff; }
+  .btn-glass:hover:not(:disabled) { background: rgba(109, 109, 110, .45); }
+  .btn-lg { height: 44px; padding: 0 1.4rem; font-size: 16px; border-radius: 6px; }
+  .btn-lg svg { width: 22px; height: 22px; }
+  .round-btn { display: inline-grid; place-items: center; width: 44px; height: 44px; flex-shrink: 0; border-radius: 9999px; border: 2px solid rgba(255, 255, 255, .5); background: rgba(42, 42, 42, .6); color: #fff; transition: border-color .15s, background-color .15s; }
+  .round-btn:hover { border-color: #fff; background: rgba(255, 255, 255, .1); }
+  .skel { background: linear-gradient(100deg, var(--surface-200) 30%, var(--surface-300) 50%, var(--surface-200) 70%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
+  @keyframes shimmer { to { background-position: -200% 0; } }
+
+  /* barra in alto: trasparente sopra l'hero nelle viste a righe, piena nella Live TV */
+  #topbar { background: var(--surface-100); border-bottom: 1px solid var(--line); transition: background-color .3s, border-color .3s; }
+  .view-browse #topbar { position: absolute; top: 0; left: 0; right: 0; border-color: transparent; background: linear-gradient(to bottom, rgba(0, 0, 0, .8), rgba(0, 0, 0, 0)); }
+  .view-browse #topbar.solid { background: var(--surface-100); border-color: var(--line); }
+  .nav-btn { height: 34px; padding: 0 .75rem; border-radius: 6px; font-size: 14px; font-weight: 600; color: #d6d6d6; white-space: nowrap; transition: color .15s; }
+  .nav-btn:hover { color: var(--ink-muted); }
+  .nav-btn[aria-selected="true"] { color: var(--ink); font-weight: 800; }
+  .gsearch { position: relative; }
+  .gsearch input { width: 12rem; height: 36px; padding: 0 2.1rem; border-radius: 6px; background: rgba(0, 0, 0, .45); border: 1px solid rgba(255, 255, 255, .2); color: var(--ink); font-size: 14px; font-weight: 500; outline: none; transition: width .2s, border-color .15s, background-color .15s; }
+  .gsearch input:focus, .gsearch input:not(:placeholder-shown) { width: 17rem; border-color: var(--ink); background: rgba(0, 0, 0, .78); }
+  .gsearch input::placeholder { color: var(--ink-subtle); }
+  .gsearch input::-webkit-search-cancel-button { -webkit-appearance: none; }
+  .acct-btn { position: relative; display: flex; align-items: center; gap: 6px; height: 40px; padding: 0 4px; border-radius: 8px; }
+  .acct-btn[aria-expanded="true"] svg { transform: rotate(180deg); }
+  .now-pill { display: inline-flex; align-items: center; gap: 8px; max-width: 16rem; height: 32px; margin-right: 6px; padding: 0 12px; border-radius: 9999px; background: rgba(0, 0, 0, .55); border: 1px solid rgba(255, 255, 255, .2); font-size: 12px; font-weight: 700; color: var(--ink); }
+  .now-pill:hover { border-color: var(--ink); }
+
+  /* hero */
+  .hero { position: relative; min-height: min(82vh, 820px); display: flex; align-items: flex-end; overflow: hidden; background: var(--surface-100); }
+  /* l'immagine (livello composito, animato) si ferma 2 px prima del fondo: niente filo chiaro sul bordo */
+  .hero-bg { position: absolute; inset: 0; width: 100%; height: calc(100% - 2px); object-fit: cover; object-position: center 22%; animation: fade-in .7s ease-out; }
+  .hero-bg.blur { filter: blur(40px) brightness(.5) saturate(1.3); transform: scale(1.2); }
+  .hero-poster { position: absolute; right: calc(var(--gutter) + 2vw); top: 50%; transform: translateY(-50%); width: clamp(160px, 17vw, 290px); aspect-ratio: 2 / 3; object-fit: cover; border-radius: 8px; box-shadow: var(--shadow-pop); animation: fade-in .7s ease-out; }
+  .hero-shade { position: absolute; inset: 0; background: linear-gradient(to top, var(--surface-100) 0%, var(--surface-100) 7%, color-mix(in srgb, var(--surface-100) 72%, transparent) 16%, color-mix(in srgb, var(--surface-100) 30%, transparent) 28%, transparent 42%), linear-gradient(77deg, rgba(0, 0, 0, .86) 0%, rgba(0, 0, 0, .5) 36%, rgba(0, 0, 0, 0) 68%); }
+  .hero-content { position: relative; width: min(46rem, 58%); padding: 8rem 0 calc(10vh + 4.5rem) var(--gutter); }
+  .hero-title { font-size: clamp(2.1rem, 4.4vw, 4.2rem); line-height: 1.04; font-weight: 800; letter-spacing: -.02em; text-shadow: 0 2px 16px rgba(0, 0, 0, .45); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .hero-plot { font-size: clamp(.95rem, 1.15vw, 1.15rem); line-height: 1.5; color: #e6e6e6; text-shadow: 0 1px 8px rgba(0, 0, 0, .6); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .page-head { position: absolute; top: 4.75rem; left: var(--gutter); z-index: 2; display: flex; align-items: center; gap: 1.25rem; }
+  .genre-select { height: 34px; max-width: 18rem; padding: 0 2rem 0 .75rem; border: 1px solid rgba(255, 255, 255, .85); border-radius: 2px; background: rgba(0, 0, 0, .8) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E") no-repeat right 6px center / 18px; color: #fff; font-size: 14px; font-weight: 700; -webkit-appearance: none; appearance: none; cursor: pointer; }
+  .genre-select option { background: var(--surface-200); }
+  .genre-select:hover, .genre-select[aria-expanded="true"] { background-color: rgba(0, 0, 0, .95); }
+  /* scelta delle categorie: caselle, categorie scelte nella griglia */
+  .cp-box { width: 16px; height: 16px; flex-shrink: 0; display: grid; place-items: center; border: 1.5px solid var(--ink-subtle); border-radius: 4px; color: transparent; }
+  .cp-box svg { width: 11px; height: 11px; }
+  #catpick-list .menu-opt { height: 32px; }
+  #catpick-list .menu-opt:focus-visible { background: var(--glass-hover); color: var(--ink); outline: none; }
+  #catpick-list .menu-opt.on .cp-box { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .cat-chip { display: inline-flex; align-items: center; gap: .35rem; max-width: 20rem; height: 30px; padding: 0 .3rem 0 .8rem; border-radius: 9999px; background: var(--surface-300); border: 1px solid var(--line); font-size: 13px; font-weight: 600; color: var(--ink); }
+  .cat-chip button { display: grid; place-items: center; width: 22px; height: 22px; flex-shrink: 0; border-radius: 9999px; color: var(--ink-muted); }
+  .cat-chip button:hover { background: var(--glass-hover); color: var(--ink); }
+  .rows.plain > .page-head { position: static; padding: 0 var(--gutter); }
+
+  /* righe di locandine */
+  .rows { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 1.6rem; padding-bottom: 4rem; }
+  .hero + .rows { margin-top: -10vh; }
+  .rows.plain { padding-top: 6.5rem; }
+  .row-head { display: flex; align-items: baseline; gap: .9rem; padding: 0 var(--gutter); }
+  .row-title { font-size: clamp(1.05rem, 1.35vw, 1.4rem); font-weight: 800; letter-spacing: -.01em; }
+  .row-all { font-size: 13px; font-weight: 700; color: var(--info); opacity: .85; white-space: nowrap; }
+  .row-all:hover { opacity: 1; text-decoration: underline; }
+  .row-wrap { position: relative; }
+  .row-track { display: grid; grid-auto-flow: column; grid-auto-columns: var(--card-w); gap: .55rem; overflow-x: auto; overflow-y: hidden; padding: .7rem var(--gutter) 1rem; scroll-padding-inline: var(--gutter); scroll-snap-type: x mandatory; scrollbar-width: none; overscroll-behavior-x: contain; }
+  .row-track::-webkit-scrollbar { display: none; }
+  .row-track.wide { grid-auto-columns: var(--wide-w); }
+  .row-track > * { scroll-snap-align: start; }
+  .row-track.loading { min-height: calc(var(--card-w) * 1.5 + 3.4rem); }
+  .row-arrow { position: absolute; top: .7rem; bottom: 2.6rem; z-index: 3; width: max(40px, calc(var(--gutter) - 8px)); display: grid; place-items: center; color: #fff; background: rgba(20, 20, 20, .6); opacity: 0; transition: opacity .2s, background-color .2s; }
+  .row-arrow.l { left: 0; border-radius: 0 6px 6px 0; }
+  .row-arrow.r { right: 0; border-radius: 6px 0 0 6px; }
+  .row-arrow svg { width: 30px; height: 30px; transition: transform .15s; }
+  .row-arrow:hover { background: rgba(20, 20, 20, .85); }
+  .row-arrow:hover svg { transform: scale(1.2); }
+  .row-wrap:hover .row-arrow, .row-arrow:focus-visible { opacity: 1; }
+  .row-wrap[data-start] .row-arrow.l, .row-wrap[data-end] .row-arrow.r { display: none; }
+  .pgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--card-w), 1fr)); gap: 1.4rem .55rem; padding: 0 var(--gutter); }
+  .pgrid.wide { grid-template-columns: repeat(auto-fill, minmax(var(--wide-w), 1fr)); }
+
+  /* schede (locandine, canali) */
+  .pcard { position: relative; min-width: 0; }
+  .pcard:hover { z-index: 2; }
+  .pcard-btn { display: block; width: 100%; text-align: left; border-radius: 6px; }
+  .pcard-btn:focus-visible { outline: none; }
+  .pcard-img { position: relative; display: flex; align-items: center; justify-content: center; aspect-ratio: 2 / 3; border-radius: 6px; overflow: hidden; background: linear-gradient(160deg, var(--surface-300), var(--surface-200)); transition: transform .25s cubic-bezier(.2, .8, .2, 1), box-shadow .25s; }
+  .pcard-img.wide { aspect-ratio: 16 / 9; }
+  .pcard-img > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .pcard-img > img.logo { object-fit: contain; padding: 14% 20%; }
+  .pcard:hover .pcard-img, .pcard-btn:focus-visible .pcard-img { transform: scale(1.06); box-shadow: 0 16px 30px -10px rgba(0, 0, 0, .85); }
+  .pcard-btn:focus-visible .pcard-img { outline: 2px solid #fff; outline-offset: 2px; }
+  .pcard.playing .pcard-img { box-shadow: 0 0 0 2px var(--accent); }
+  .pcard-fb { padding: .8rem; text-align: center; font-size: 13px; line-height: 1.25; font-weight: 800; color: var(--ink-muted); display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+  .pcard-title { display: block; margin-top: .5rem; font-size: 13px; font-weight: 700; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pcard-sub { display: block; font-size: 11px; font-weight: 600; color: var(--ink-subtle); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pcard-bar { position: absolute; left: 8px; right: 8px; bottom: 8px; height: 3px; border-radius: 2px; background: rgba(255, 255, 255, .3); overflow: hidden; }
+  .pcard-bar > span { display: block; height: 100%; background: var(--accent); }
+  .pcard-play { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0, 0, 0, .35); opacity: 0; transition: opacity .2s; }
+  .pcard-play > span { width: 46px; height: 46px; border-radius: 9999px; display: grid; place-items: center; background: rgba(0, 0, 0, .55); border: 2px solid #fff; color: #fff; }
+  .pcard:hover .pcard-play, .pcard-btn:focus-visible .pcard-play { opacity: 1; }
+  .pcard-act { position: absolute; top: 6px; z-index: 3; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 9999px; background: rgba(20, 20, 20, .8); border: 1px solid rgba(255, 255, 255, .4); color: #fff; opacity: 0; transition: opacity .15s, border-color .15s; }
+  .pcard:hover .pcard-act, .pcard-act:focus-visible { opacity: 1; }
+  .pcard-act:hover { border-color: #fff; }
+
+  /* scheda di dettaglio */
+  #detail-view:not(.hidden) { animation: fade-in .15s ease-out; }
+  #detail-view:not(.hidden) .modal-card { animation: pop-in .18s ease-out; }
+  .dt-hero { position: relative; height: clamp(320px, 56vh, 540px); overflow: hidden; background: var(--surface-0); }
+  .dt-hero .hero-bg { object-position: center 18%; }
+  .dt-shade { position: absolute; inset: 0; background: linear-gradient(to top, var(--surface-200) 0%, rgba(27, 27, 27, .55) 38%, transparent 70%), linear-gradient(90deg, rgba(0, 0, 0, .55), transparent 65%); }
+  .dt-close { position: absolute; top: 14px; right: 14px; z-index: 3; width: 38px; height: 38px; border-radius: 9999px; display: grid; place-items: center; background: rgba(20, 20, 20, .85); color: #fff; }
+  .dt-close:hover { background: var(--surface-400); }
+  .ep-row { position: relative; width: 100%; display: flex; align-items: center; gap: 1rem; padding: 1rem; border-radius: 6px; border-bottom: 1px solid var(--line); text-align: left; transition: background-color .15s; }
+  .ep-row:hover, .ep-row:focus-visible, .ep-row.on { background: var(--surface-300); }
+  .ep-thumb { position: relative; width: 150px; aspect-ratio: 16 / 9; flex-shrink: 0; border-radius: 4px; overflow: hidden; display: grid; place-items: center; background: var(--surface-400); }
+  .ep-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .ep-row:hover .pcard-play, .ep-row:focus-visible .pcard-play { opacity: 1; }
+
+  /* player a tutta finestra (film ed episodi) */
+  #player-stage #player-wrap { width: 100%; height: 100%; max-height: none; aspect-ratio: auto; border: 0; border-radius: 0; }
+  /* titolo e freccia "indietro" restano sopra anche all'avviso di errore */
+  #player-stage #osd-top.on { display: flex; z-index: 25; }
+  #player-stage #osd-hint { z-index: 25; }
+  #osd-back { display: none; }
+  #player-stage #osd-back { display: inline-grid; }
+  #player-stage #btn-theater, #player-stage #btn-stop { display: none; }
+  #player-slot #osd-hint { display: none; }
+  html.engine-mpv #player-stage { background: transparent; }
+  html.player-full #app-view > :not(#player-stage) { visibility: hidden; }
   .row-active { background: var(--accent-soft); }
   .row-active::before { content: ""; position: absolute; left: 0; top: 14px; bottom: 14px; width: 3px; border-radius: 9999px; background: var(--accent); }
   .row-active .logo-tile { border-color: var(--accent); }
@@ -125,7 +256,7 @@
   @keyframes pop-in { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: none; } }
   #modal:not(.hidden), #settings-panel:not(.hidden) { animation: fade-in .15s ease-out; }
   #modal:not(.hidden) .modal-card, #settings-panel:not(.hidden) .modal-card { animation: pop-in .15s ease-out; }
-  @media (prefers-reduced-motion: reduce) { .spin, .eq i, .badge-dot, .animate-pulse { animation: none !important; } }
+  @media (prefers-reduced-motion: reduce) { .spin, .eq i, .badge-dot, .animate-pulse, .skel { animation: none !important; } .pcard-img { transition: none; } }
   /* il JS mostra e nasconde con "hidden": deve vincere sul display dei componenti qui sopra */
   .hidden { display: none !important; }
   /* motore mpv: il video lo disegna una finestra nativa sotto la pagina, che sul rettangolo del
@@ -139,14 +270,95 @@
   /* schermo intero con mpv: si vede solo il player, come con il motore del browser */
   html.mpv-full body *:not(#player-wrap, #player-wrap *) { visibility: hidden; }
   html.mpv-full #player-wrap { visibility: visible; }
+
+  /* ---------------------------------------------------------------- telefono in verticale
+     html.mobile (09e-tv.js): pagina larga quanto lo schermo, sezioni in una barra in basso,
+     nella Live TV il player in alto, le categorie in una fila di "chip" e la lista sotto */
+  .nav-ico { display: none; }
+  html.mobile { --gutter: 14px; --card-w: 28vw; --wide-w: 64vw; --tabbar: 60px; }
+  html.mobile #app-view { padding-bottom: var(--tabbar); }
+  html.mobile #topbar { height: 56px; gap: 2px; }
+  html.mobile #topbar > div:first-child { margin-right: 8px; }
+  html.mobile #nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; height: var(--tabbar); display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; background: var(--surface-100); border-top: 1px solid var(--line); }
+  html.mobile .nav-btn { height: 100%; padding: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; border-radius: 0; font-size: 11px; font-weight: 600; color: var(--ink-subtle); }
+  html.mobile .nav-btn[aria-selected="true"] { color: var(--ink); font-weight: 800; }
+  html.mobile .nav-btn[aria-selected="true"] .nav-ico { color: var(--accent); }
+  html.mobile .nav-ico { display: block; width: 22px; height: 22px; }
+  html.mobile #topbar > .flex-1 { display: none; }
+  html.mobile .gsearch { flex: 1; min-width: 0; margin-right: 2px; }
+  html.mobile .gsearch input, html.mobile .gsearch input:focus, html.mobile .gsearch input:not(:placeholder-shown) { width: 100%; height: 38px; font-size: 15px; }
+  html.mobile #now-pill, html.mobile #refresh-btn { display: none !important; }
+  html.mobile #settings-btn { width: 40px !important; height: 40px !important; }
+  html.mobile #acct-menu { position: fixed; top: 56px; left: 8px; right: 8px; width: auto; }
+  html.mobile #toast { bottom: calc(var(--tabbar) + 12px); max-width: calc(100vw - 24px); }
+  html.mobile #catpick { left: 8px !important; right: 8px; width: auto; }
+  /* Live TV */
+  html.mobile #live-view { flex-direction: column; }
+  html.mobile #live-view > main { order: -1; flex: none; }
+  html.mobile #live-scroller { overflow: visible; padding: 0; }
+  html.mobile #player-slot #player-wrap { border-radius: 0; border: 0; border-bottom: 1px solid var(--line); max-height: none; }
+  html.mobile #info-panel, html.mobile #catchup-box, html.mobile #btn-theater { display: none !important; }
+  html.mobile #sidebar { width: auto; flex: none; border-right: 0; border-bottom: 1px solid var(--line); background: var(--surface-100); }
+  html.mobile #sidebar > div:first-child { display: none; }
+  html.mobile #cat-list { display: flex; align-items: center; gap: 6px; overflow-x: auto; overflow-y: hidden; padding: 8px var(--gutter); scrollbar-width: none; }
+  html.mobile #cat-list::-webkit-scrollbar { display: none; }
+  html.mobile #cat-list > * { margin: 0 !important; }
+  html.mobile #cat-list > div, html.mobile #cat-list > p { display: none; }
+  html.mobile #cat-list > button { flex: none; width: auto; max-width: 70vw; height: 34px; padding: 0 12px; border-radius: 9999px; border: 1px solid var(--line); background: var(--surface-200); }
+  html.mobile #cat-list > button[aria-current="true"] { border-color: var(--accent); }
+  html.mobile #list-col { width: auto; flex: 1; border-right: 0; }
+  html.mobile #list-col > div:first-child { padding: 10px var(--gutter) 8px; }
+  html.mobile #list-scroller { padding: 0 6px; }
+  html.mobile #guide-legend, html.mobile #guide-bar > div:first-child, html.mobile .gch .logo-tile { display: none; }
+  html.mobile #guide-bar { padding: 8px var(--gutter); gap: 8px; }
+  html.mobile #guide-days { margin-left: 0; flex: 1; }
+  /* righe di locandine e hero */
+  html.mobile .hero { min-height: 64vh; }
+  html.mobile .hero-poster { display: none; }
+  html.mobile .hero-content { width: 100%; padding: 6rem var(--gutter) calc(6vh + 3.5rem); }
+  html.mobile .hero-title { font-size: 2rem; }
+  html.mobile .hero-plot { font-size: .95rem; -webkit-line-clamp: 3; }
+  html.mobile .hero + .rows { margin-top: -6vh; }
+  html.mobile .rows { gap: 1.2rem; padding-bottom: 1.5rem; }
+  html.mobile .rows.plain { padding-top: 4.5rem; }
+  html.mobile .page-head { top: 4.2rem; gap: .75rem; flex-wrap: wrap; right: var(--gutter); }
+  html.mobile .row-title { font-size: 1.05rem; }
+  html.mobile .row-arrow { display: none; }
+  html.mobile .pgrid { gap: 1rem .5rem; }
+  html.mobile .pcard-act { opacity: 1; }
+  /* scheda, impostazioni e finestre: a tutto schermo */
+  html.mobile #detail-card { width: 100%; margin: 0; min-height: 100%; border-radius: 0; }
+  html.mobile #detail-view { padding-bottom: 0; }
+  html.mobile .dt-hero { height: 42vh; }
+  html.mobile #detail-card .px-10 { padding-left: var(--gutter); padding-right: var(--gutter); }
+  html.mobile #detail-card .dt-body { grid-template-columns: minmax(0, 1fr); }
+  html.mobile #detail-card .dt-similar { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  html.mobile .ep-thumb { width: 120px; }
+  html.mobile #settings-panel { padding: 0; }
+  html.mobile #settings-panel .modal-card { max-width: none; height: 100%; border-radius: 0; border: 0; }
+  html.mobile .set-row { flex-wrap: wrap; }
+  html.mobile #modal { padding: 16px; }
+  html.mobile #modal-actions .btn { flex: 1 1 auto; }
+  /* Android: niente Picture in Picture né scorciatoie da tastiera nel menu */
+  html.android #btn-pip, html.android .desktop-only { display: none !important; }
+  html:not(.android) .android-only { display: none !important; }
+  /* Android TV: lo stato attivo del telecomando si vede bene da lontano */
+  html.tv :focus-visible:not(.pcard-btn) { outline: 3px solid var(--focus-ring) !important; outline-offset: 3px; }
+  html.tv #player-wrap:focus-visible, html.tv #list-scroller:focus-visible, html.tv #browse-scroller:focus-visible { outline: none !important; }
+  html.tv .vrow:focus { background: var(--surface-300); outline: none !important; box-shadow: inset 0 0 0 2px var(--focus-ring); }
+  html.tv .vrow:focus .fav-btn { opacity: 1; }
+  /* dentro i contenitori che scorrono il bordo esterno verrebbe tagliato */
+  html.tv #acct-list :focus-visible, html.tv #cat-list :focus-visible, html.tv #catpick-list :focus-visible, html.tv #tracks-menu :focus-visible { outline-offset: -3px; }
+  html.touch .vrow .fav-btn { opacity: 1; }
 </style>
 </head>
 <body class="h-full bg-s1 text-ink font-sans overflow-hidden antialiased">
 <div id="mpv-backdrop" aria-hidden="true"></div>
 
 <!-- ============================ LOGIN ============================ -->
-<div id="login-view" class="h-full flex items-center justify-center p-6 bg-[radial-gradient(ellipse_at_top,rgba(245,165,36,0.10),transparent_55%)]">
-  <div class="w-full max-w-md">
+<div id="login-view" class="h-full flex justify-center p-6 overflow-y-auto bg-[radial-gradient(ellipse_at_top,rgba(229,9,20,0.14),transparent_55%)]">
+  <!-- my-auto: centrata, ma su schermi bassi (TV, telefono) scorre invece di uscire dal bordo -->
+  <div class="w-full max-w-md my-auto">
     <div class="flex flex-col items-center gap-4 mb-8 text-center">
       <div class="w-14 h-14 rounded-2xl bg-accent flex items-center justify-center shadow-glow">
         <svg class="w-7 h-7 text-on-accent" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11.04-6.86a1 1 0 0 0 0-1.72L9.5 4.28A1 1 0 0 0 8 5.14z"/></svg>
@@ -206,292 +418,344 @@
       </button>
       <button id="login-cancel" type="button" class="hidden w-full text-xs text-ink-muted hover:text-ink py-1">Annulla e modifica le credenziali</button>
     </form>
-    <p class="text-center text-xs text-ink-subtle mt-6">Le credenziali restano su questo PC (Gestione credenziali di Windows e cartella di configurazione dell'app).</p>
+
+    <!-- dispositivo nuovo (spesso la TV): playlist e preferiti da un dispositivo già sincronizzato -->
+    <button id="login-sync" type="button" data-sync="pair" class="hidden btn btn-ghost w-full mt-4">
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-15.5 6.2M3 12a9 9 0 0 1 15.5-6.2"/><path d="M21 4v5h-5M3 20v-5h5"/></svg>
+      Ricevi le playlist da un altro dispositivo
+    </button>
+    <p class="desktop-only text-center text-xs text-ink-subtle mt-6">Le credenziali restano su questo PC (Gestione credenziali di Windows e cartella di configurazione dell'app).</p>
+    <p class="android-only text-center text-xs text-ink-subtle mt-6">Le credenziali restano su questo dispositivo, nella cartella privata dell'app.</p>
   </div>
 </div>
 
 <!-- ============================ APP ============================ -->
-<div id="app-view" class="hidden h-full flex">
+<div id="app-view" class="hidden h-full flex flex-col relative">
 
-  <!-- Sidebar sinistra -->
-  <aside id="sidebar" class="w-72 shrink-0 bg-s2 border-r border-line flex flex-col min-h-0">
-    <div class="p-4 space-y-3">
-      <div class="flex items-center gap-2.5">
-        <div class="w-8 h-8 rounded-lg bg-accent flex items-center justify-center shadow-glow">
-          <svg class="w-4 h-4 text-on-accent" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11.04-6.86a1 1 0 0 0 0-1.72L9.5 4.28A1 1 0 0 0 8 5.14z"/></svg>
-        </div>
-        <span class="font-extrabold tracking-tight flex-1">Xtream Player</span>
-        <button id="settings-btn" class="icon-btn" title="Impostazioni" aria-label="Impostazioni">
-          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-        </button>
-        <button id="help-btn" class="icon-btn" title="Scorciatoie da tastiera (?)" aria-label="Scorciatoie da tastiera">
-          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg>
-        </button>
-        <button id="refresh-btn" class="icon-btn" title="Ricarica categorie e liste" aria-label="Ricarica categorie e liste">
-          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
-        </button>
+  <!-- Barra in alto: sezioni, ricerca, impostazioni e account -->
+  <header id="topbar" class="relative z-20 h-16 shrink-0 flex items-center gap-1.5 px-[var(--gutter)]">
+    <div class="flex items-center gap-2.5 mr-5 shrink-0">
+      <div class="w-8 h-8 rounded-md bg-accent flex items-center justify-center shadow-glow">
+        <svg class="w-4 h-4 text-on-accent" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11.04-6.86a1 1 0 0 0 0-1.72L9.5 4.28A1 1 0 0 0 8 5.14z"/></svg>
       </div>
-      <div class="grid grid-cols-3 gap-1 p-1 bg-s0 rounded-lg border border-line" role="tablist">
-        <button data-mode="live" role="tab" class="mode-btn h-[30px] text-[13px] font-bold rounded-md transition">Live TV</button>
-        <button data-mode="vod" role="tab" class="mode-btn h-[30px] text-[13px] font-bold rounded-md transition">Film</button>
-        <button data-mode="series" role="tab" class="mode-btn h-[30px] text-[13px] font-bold rounded-md transition">Serie</button>
-      </div>
-      <div class="relative">
-        <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-ink-subtle pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-        <input id="cat-search" type="text" placeholder="Cerca categoria…" spellcheck="false" aria-label="Cerca categoria" class="field field-sm !pl-9">
-      </div>
+      <span class="font-extrabold tracking-tight text-[17px] hidden xl:inline">Xtream Player</span>
     </div>
-    <nav id="cat-list" class="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5 min-h-0" aria-label="Categorie"></nav>
-    <div class="p-3 border-t border-line">
-      <button id="update-box" class="hidden btn btn-primary btn-sm w-full mb-2"></button>
-      <select id="acct-switch" class="hidden field field-sm mb-2" aria-label="Cambia playlist" title="Cambia playlist"></select>
-      <div id="account-box" class="text-xs text-ink-muted space-y-1 mb-2"></div>
-      <div id="caps-box" class="text-[11px] text-ink-subtle mb-2 truncate"></div>
-      <button id="logout-btn" class="btn btn-ghost btn-sm w-full">
-        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
-        Gestisci playlist
-      </button>
-    </div>
-  </aside>
-
-  <!-- Colonna centrale -->
-  <section id="list-col" class="relative w-96 shrink-0 border-r border-line flex flex-col min-h-0 bg-s1">
-    <div class="p-4 space-y-3">
-      <div class="flex items-center justify-between gap-2">
-        <h2 id="list-title" class="text-base font-bold truncate">Canali</h2>
-        <div class="flex items-center gap-1 shrink-0">
-          <span id="list-count" class="text-[11px] font-semibold tabular-nums text-ink-subtle mr-1"></span>
-          <button id="list-guide" class="hidden btn btn-ghost btn-sm !px-2" title="Guida TV a griglia (G)" aria-label="Apri la guida TV a griglia">
-            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10M15 10v10M8 2v4M16 2v4"/></svg>
-            Guida
-          </button>
-          <button id="list-clear-recent" class="hidden btn btn-ghost btn-sm" title="Svuota la cronologia">Svuota</button>
-          <button id="list-locate" class="hidden icon-btn" title="Vai al contenuto in riproduzione" aria-label="Vai al contenuto in riproduzione">
-            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
-          </button>
-        </div>
-      </div>
-      <div class="relative">
-        <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-ink-subtle pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-        <input id="stream-search" type="text" placeholder="Cerca nella lista" spellcheck="false" aria-label="Cerca nella lista" class="field field-sm !pl-9 !pr-14">
-        <span id="stream-search-kbd" class="kbd absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">/</span>
-        <button id="stream-search-clear" class="hidden icon-btn absolute right-1 top-1/2 -translate-y-1/2 !w-7 !h-7" title="Svuota (Esc)" aria-label="Svuota ricerca">
-          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
-        </button>
-      </div>
-    </div>
-    <div id="list-scroller" class="flex-1 overflow-y-auto relative min-h-0 outline-none px-2" tabindex="0" aria-label="Elenco contenuti">
-      <div id="list-spacer" class="relative w-full">
-        <div id="list-rows"></div>
-      </div>
-      <div id="list-state" class="hidden absolute inset-0 flex flex-col items-center justify-center gap-3 p-6 text-center text-sm text-ink-muted"></div>
-    </div>
-
-    <!-- Dettaglio serie: copre lista e ricerca quando si apre una serie -->
-    <div id="series-view" class="hidden absolute inset-0 bg-s1 flex flex-col min-h-0">
-      <div class="p-4 pb-3 space-y-3 border-b border-line">
-        <button id="series-back" class="btn btn-ghost btn-sm !px-2 -ml-1" title="Torna all'elenco (Esc)">
-          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
-          Tutte le serie
-        </button>
-        <div class="flex gap-3">
-          <div id="series-cover" class="logo-tile w-16 h-24 shrink-0 rounded-lg overflow-hidden flex items-center justify-center text-ink-muted font-extrabold"></div>
-          <div class="min-w-0 space-y-1">
-            <h2 id="series-title" class="text-base font-bold leading-tight line-clamp-2"></h2>
-            <p id="series-meta" class="text-[11px] font-medium text-ink-subtle"></p>
-            <p id="series-plot" class="text-xs text-ink-muted line-clamp-3 select-text"></p>
-          </div>
-        </div>
-        <div id="series-seasons" class="flex gap-1 overflow-x-auto pb-1" role="tablist" aria-label="Stagioni"></div>
-      </div>
-      <div id="series-episodes" class="flex-1 overflow-y-auto min-h-0 p-2 space-y-0.5" aria-label="Episodi"></div>
-    </div>
-  </section>
-
-  <!-- Area principale -->
-  <main class="flex-1 min-w-0 flex flex-col min-h-0">
-    <div class="flex-1 min-h-0 overflow-y-auto p-5 space-y-4">
-      <div id="player-wrap" class="relative w-full aspect-video max-h-[72vh] bg-s0 rounded-xl overflow-hidden border border-line select-none">
-        <video id="video" class="w-full h-full bg-black" playsinline preload="auto" crossorigin="anonymous"></video>
-
-        <div id="player-empty" class="absolute inset-0 flex flex-col items-center justify-center gap-5 p-6 text-center bg-[radial-gradient(ellipse_at_center,rgba(245,165,36,0.07),transparent_60%)]">
-          <div class="w-16 h-16 rounded-2xl bg-s3 border border-line flex items-center justify-center text-accent">
-            <svg class="w-7 h-7" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11.04-6.86a1 1 0 0 0 0-1.72L9.5 4.28A1 1 0 0 0 8 5.14z"/></svg>
-          </div>
-          <p class="text-base font-bold text-ink">Seleziona un canale o un film dalla lista</p>
-          <div class="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs text-ink-subtle">
-            <span class="flex items-center gap-1.5"><span class="kbd">/</span> cerca</span>
-            <span class="flex items-center gap-1.5"><span class="kbd">↑</span><span class="kbd">↓</span> cambia canale</span>
-            <span class="flex items-center gap-1.5"><span class="kbd">?</span> tutte le scorciatoie</span>
-          </div>
-        </div>
-
-        <div id="player-spinner" class="hidden absolute inset-0 flex flex-col items-center justify-center gap-3 pointer-events-none">
-          <svg class="w-12 h-12 text-accent spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 3a9 9 0 1 0 9 9" stroke-linecap="round"/></svg>
-          <p id="spinner-text" class="glass text-xs text-ink rounded-md px-2 py-1 max-w-md empty:hidden"></p>
-        </div>
-
-        <div id="osd-top" class="absolute inset-x-0 top-0 px-5 pt-4 pb-12 bg-gradient-to-b from-black/80 to-transparent items-center gap-3 pointer-events-none transition-opacity duration-300">
-          <div id="osd-logo" class="w-11 h-11 shrink-0 rounded-lg bg-glass-hover border border-glass-line overflow-hidden flex items-center justify-center text-sm font-extrabold text-ink-muted"></div>
-          <div class="min-w-0">
-            <div id="osd-name" class="text-base font-bold text-ink truncate"></div>
-            <div id="osd-sub" class="text-xs text-ink-muted truncate"></div>
-          </div>
-        </div>
-
-        <div id="osd-center" class="glass absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none px-5 py-3 rounded-2xl text-ink text-xl font-bold tabular-nums flex items-center gap-2 opacity-0 transition-opacity duration-200" aria-live="polite"></div>
-
-        <div id="player-error" class="hidden absolute inset-0 bg-scrim backdrop-blur-sm flex flex-col items-center justify-center gap-4 p-6 pb-16 text-center">
-          <div class="w-12 h-12 rounded-full bg-danger-soft flex items-center justify-center">
-            <svg class="w-6 h-6 text-danger" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v5M12 16h.01"/></svg>
-          </div>
-          <p id="player-error-text" class="text-sm text-ink max-w-lg select-text"></p>
-          <div class="flex gap-2">
-            <button id="err-retry" class="btn btn-secondary">Riprova</button>
-            <button id="err-external" class="btn btn-primary">Apri in MPV/VLC</button>
-          </div>
-        </div>
-
-        <div id="tracks-menu" class="glass hidden absolute right-3 bottom-16 z-30 w-80 max-h-[calc(100%-5rem)] overflow-y-auto rounded-xl shadow-pop p-2 text-sm" role="menu" aria-label="Audio e sottotitoli"></div>
-
-        <div id="controls" class="absolute inset-x-0 bottom-0 px-4 pb-3 pt-10 bg-gradient-to-t from-black/90 via-black/50 to-transparent transition-opacity duration-300">
-          <div id="seek-row" class="hidden relative mb-1">
-            <div id="seek-tip" class="glass hidden absolute bottom-5 -translate-x-1/2 px-1.5 py-0.5 rounded text-[11px] font-semibold tabular-nums text-ink pointer-events-none"></div>
-            <input id="seek" type="range" min="0" max="1000" value="0" step="1" class="xr w-full" aria-label="Posizione">
-          </div>
-          <div class="flex items-center gap-1 text-ink">
-            <button id="btn-play" class="vbtn" title="Play/Pausa (Spazio)" aria-label="Play/Pausa"></button>
-            <button id="btn-prev" class="vbtn hidden" title="Canale precedente (↑)" aria-label="Canale precedente">
-              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zM20 6.2v11.6a1 1 0 0 1-1.5.86L9.6 12.86a1 1 0 0 1 0-1.72l8.9-5.8A1 1 0 0 1 20 6.2z"/></svg>
-            </button>
-            <button id="btn-next" class="vbtn hidden" title="Canale successivo (↓)" aria-label="Canale successivo">
-              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M16 5h2v14h-2zM4 6.2v11.6a1 1 0 0 0 1.5.86l8.9-5.8a1 1 0 0 0 0-1.72l-8.9-5.8A1 1 0 0 0 4 6.2z"/></svg>
-            </button>
-            <button id="btn-back10" class="vbtn hidden" title="Indietro 10 s (←)" aria-label="Indietro 10 secondi">
-              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><text x="12" y="15.5" font-size="8" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">10</text></svg>
-            </button>
-            <button id="btn-fwd10" class="vbtn hidden" title="Avanti 10 s (→)" aria-label="Avanti 10 secondi">
-              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/><text x="12" y="15.5" font-size="8" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">10</text></svg>
-            </button>
-            <button id="btn-stop" class="vbtn" title="Stop" aria-label="Stop">
-              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>
-            </button>
-            <button id="btn-mute" class="vbtn" title="Muto (M)" aria-label="Muto"></button>
-            <input id="volume" type="range" min="0" max="100" value="100" class="xr w-24" aria-label="Volume" title="Volume (+/−, rotella del mouse)">
-            <span id="time" class="text-xs font-semibold tabular-nums text-ink-muted ml-2 whitespace-nowrap"></span>
-            <span id="live-badge" class="hidden badge badge-live ml-2"><span class="badge-dot"></span>Live</span>
-            <div class="flex-1"></div>
-            <button id="btn-tracks" class="vbtn hidden" title="Audio e sottotitoli" aria-label="Audio e sottotitoli" aria-haspopup="menu" aria-expanded="false">
-              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 15h4M13 15h5M6 11h8M16.5 11h1.5"/></svg>
-            </button>
-            <button id="btn-reload" class="vbtn" title="Ricarica stream (R)" aria-label="Ricarica stream">
-              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
-            </button>
-            <button id="btn-pip" class="vbtn" title="Picture in Picture (P)" aria-label="Picture in Picture">
-              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><rect x="12" y="12" width="7" height="5" rx="1" fill="currentColor"/></svg>
-            </button>
-            <button id="btn-theater" class="vbtn" title="Modalità cinema (T)" aria-label="Modalità cinema" aria-pressed="false">
-              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/></svg>
-            </button>
-            <button id="btn-fs" class="vbtn" title="Schermo intero (F)" aria-label="Schermo intero">
-              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Info canale -->
-      <div id="info-panel" class="bg-s2 border border-line rounded-xl p-4 flex flex-wrap gap-4 items-start">
-        <div id="info-logo" class="logo-tile w-20 h-20 shrink-0 rounded-lg flex items-center justify-center overflow-hidden text-ink-muted text-xl font-extrabold"></div>
-        <div class="flex-1 min-w-[14rem] space-y-1.5">
-          <div class="flex items-center gap-2 min-w-0">
-            <span id="info-type" class="hidden badge shrink-0"></span>
-            <h3 id="info-name" class="text-xl font-bold tracking-tight truncate select-text">Nessun contenuto in riproduzione</h3>
-          </div>
-          <p id="info-cat" class="text-sm text-ink-muted truncate"></p>
-          <!-- guida TV: in onda e successivo -->
-          <div id="info-epg" class="hidden space-y-1.5 py-1">
-            <div class="flex items-baseline gap-2 min-w-0">
-              <span class="overline shrink-0">Ora</span>
-              <span id="epg-now-title" class="text-sm font-bold text-ink truncate select-text"></span>
-              <span id="epg-now-time" class="text-[11px] font-semibold tabular-nums text-ink-subtle shrink-0 ml-auto"></span>
-            </div>
-            <div class="h-1 rounded-full bg-s4 overflow-hidden"><div id="epg-now-bar" class="h-full bg-accent rounded-full" style="width:0%"></div></div>
-            <p id="epg-now-desc" class="text-xs text-ink-muted line-clamp-2 select-text"></p>
-            <div class="flex items-baseline gap-2 min-w-0">
-              <span class="overline shrink-0">Dopo</span>
-              <span id="epg-next-title" class="text-xs font-semibold text-ink-muted truncate"></span>
-              <span id="epg-next-time" class="text-[11px] font-semibold tabular-nums text-ink-subtle shrink-0 ml-auto"></span>
-            </div>
-          </div>
-          <!-- scheda film / episodio -->
-          <p id="info-meta" class="hidden text-xs font-medium text-ink-subtle"></p>
-          <p id="info-plot" class="hidden text-sm text-ink-muted line-clamp-3 select-text"></p>
-          <p id="info-cast" class="hidden text-xs text-ink-subtle line-clamp-1 select-text"></p>
-          <p id="info-status" class="text-xs font-medium text-ink"></p>
-          <p id="info-tech" class="text-xs font-mono text-ink-subtle select-text"></p>
-          <p id="info-latency" class="text-xs font-mono text-ink-subtle tabular-nums"></p>
-          <div id="info-hint" class="hidden text-xs font-medium text-accent-ink bg-accent-soft rounded-md px-2 py-1.5 select-text"></div>
-        </div>
-        <div class="flex flex-col gap-2 shrink-0 w-52 ml-auto">
-          <button id="btn-external" disabled class="btn btn-primary">
-            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 3h7v7M21 3l-9 9M19 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5"/></svg>
-            Apri in MPV/VLC
-          </button>
-          <div class="grid grid-cols-2 gap-2">
-            <button id="btn-fav" disabled class="btn btn-secondary !px-3 !gap-1.5"></button>
-            <button id="btn-copy" disabled class="btn btn-secondary !px-3 !gap-1.5" title="Copia URL stream negli appunti">
-              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-              URL
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Catch-up: programmi passati del canale in riproduzione -->
-      <div id="catchup-box" class="hidden bg-s2 border border-line rounded-xl">
-        <div class="flex items-center gap-2 px-4 pt-3 pb-2">
-          <span class="text-accent">
-            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 8v4l2.5 1.5"/></svg>
-          </span>
-          <h3 class="text-sm font-bold">Rivedi i programmi passati</h3>
-          <span id="catchup-sub" class="text-[11px] font-semibold text-ink-subtle ml-auto"></span>
-        </div>
-        <div id="catchup-list" class="max-h-72 overflow-y-auto px-2 pb-2 space-y-0.5"></div>
-      </div>
-    </div>
-  </main>
-
-  <!-- Guida TV a griglia: canali della lista in righe, orari in colonne -->
-  <section id="guide-view" class="hidden flex-1 min-w-0 flex flex-col min-h-0 bg-s1" aria-label="Guida TV">
-    <div class="flex items-center gap-3 px-5 pt-4 pb-3 border-b border-line">
-      <div class="min-w-0 shrink">
-        <h2 class="text-base font-bold leading-tight">Guida TV</h2>
-        <p id="guide-sub" class="text-[11px] font-medium text-ink-subtle truncate"></p>
-      </div>
-      <div id="guide-days" class="flex gap-1 overflow-x-auto ml-auto min-w-0 pb-0.5" role="tablist" aria-label="Giorno"></div>
-      <button id="guide-now-btn" class="btn btn-secondary btn-sm shrink-0" title="Torna all'ora attuale">Adesso</button>
-      <button id="guide-close" class="icon-btn shrink-0" title="Chiudi la guida (Esc)" aria-label="Chiudi la guida">
+    <nav id="nav" class="flex items-center gap-0.5 min-w-0" role="tablist" aria-label="Sezioni">
+      <!-- le icone si vedono solo nella barra in basso del telefono in verticale -->
+      <button data-view="home" role="tab" class="nav-btn" title="Home (H)"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg><span>Home</span></button>
+      <button data-view="live" role="tab" class="nav-btn"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="m17 2-5 5-5-5"/></svg><span>Live TV</span></button>
+      <button data-view="vod" role="tab" class="nav-btn"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 3v18M17 3v18M3 8h4M3 16h4M17 8h4M17 16h4"/></svg><span>Film</span></button>
+      <button data-view="series" role="tab" class="nav-btn"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8M12 17v4"/></svg><span>Serie TV</span></button>
+    </nav>
+    <div class="flex-1 min-w-4"></div>
+    <button id="now-pill" class="hidden now-pill" title="Torna alla Live TV"></button>
+    <div class="gsearch mr-1">
+      <svg class="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-muted pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="gsearch-input" type="search" placeholder="Film, serie, canali" spellcheck="false" autocomplete="off" aria-label="Cerca film, serie e canali">
+      <button id="gsearch-clear" class="hidden icon-btn absolute right-0.5 top-1/2 -translate-y-1/2 !w-8 !h-8" title="Svuota (Esc)" aria-label="Svuota ricerca">
         <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
       </button>
     </div>
-    <div id="guide-status" class="hidden flex items-center gap-2 px-5 py-2 border-b border-line text-xs font-medium text-ink-muted" role="status"></div>
-    <div id="guide-scroller" class="relative flex-1 min-h-0 overflow-auto outline-none" tabindex="0" aria-label="Griglia dei programmi">
-      <div id="guide-canvas" class="relative">
-        <div id="guide-head" class="sticky top-0 z-20 flex bg-s1 border-b border-line"></div>
-        <div id="guide-rows"></div>
-        <div id="guide-now-line" class="hidden absolute top-0 w-0.5 bg-live pointer-events-none z-[5]"></div>
+    <button id="refresh-btn" class="icon-btn !w-9 !h-9" title="Aggiorna categorie e liste di Live TV, film e serie" aria-label="Aggiorna le liste">
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+    </button>
+    <button id="help-btn" class="desktop-only icon-btn !w-9 !h-9" title="Scorciatoie da tastiera (?)" aria-label="Scorciatoie da tastiera">
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg>
+    </button>
+    <button id="settings-btn" class="icon-btn !w-9 !h-9" title="Impostazioni" aria-label="Impostazioni">
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+    <div class="relative ml-1.5">
+      <button id="acct-btn" class="acct-btn" title="Account e playlist" aria-label="Account e playlist" aria-haspopup="true" aria-expanded="false">
+        <span id="acct-avatar" class="w-8 h-8 rounded-md bg-accent text-on-accent grid place-items-center text-xs font-extrabold">?</span>
+        <svg class="w-3 h-3 text-ink-muted transition-transform" viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
+        <span id="update-dot" class="hidden absolute -top-1 left-6 w-2.5 h-2.5 rounded-full bg-success ring-2 ring-[var(--surface-100)]"></span>
+      </button>
+      <div id="acct-menu" class="hidden glass absolute right-0 top-12 w-80 rounded-xl shadow-pop p-3 text-sm z-30">
+        <button id="update-box" class="hidden btn btn-primary btn-sm w-full mb-3"></button>
+        <div id="account-box" class="text-xs text-ink-muted space-y-1 mb-3"></div>
+        <select id="acct-switch" class="hidden field field-sm mb-3" aria-label="Cambia playlist" title="Cambia playlist"></select>
+        <div id="caps-box" class="desktop-only text-[11px] text-ink-subtle mb-3 truncate"></div>
+        <div class="flex items-center gap-2 mb-3">
+          <span id="lists-age" class="flex-1 min-w-0 truncate text-[11px] text-ink-subtle"></span>
+          <button id="acct-refresh" class="btn btn-secondary btn-sm shrink-0" title="Riscarica dal provider categorie e liste di Live TV, film e serie">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+            Aggiorna liste
+          </button>
+        </div>
+        <button id="logout-btn" class="btn btn-secondary btn-sm w-full">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+          Gestisci playlist
+        </button>
       </div>
-      <div id="guide-empty" class="hidden absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-ink-muted"></div>
     </div>
-    <div class="flex flex-wrap items-center gap-x-5 gap-y-1 px-5 py-2 border-t border-line text-[11px] font-medium text-ink-subtle">
-      <span class="flex items-center gap-1.5"><span class="gp-key gp-live"></span>In onda: clic per guardare</span>
-      <span class="flex items-center gap-1.5"><span class="gp-key gp-archive"></span>Passato con archivio: clic per rivedere</span>
-      <span class="flex items-center gap-1.5"><span class="gp-key gp-past"></span>Passato senza archivio</span>
-      <span class="flex items-center gap-1.5"><span class="gp-key"></span>In programma</span>
-      <span class="ml-auto">Clic sul nome di un canale per guardarlo · <span class="kbd">G</span> o <span class="kbd">Esc</span> chiude</span>
+  </header>
+
+  <!-- Scelta delle categorie di Film e Serie: ricerca e più categorie insieme (09b-browse.js) -->
+  <div id="catpick" class="hidden glass fixed z-40 w-80 rounded-xl shadow-pop p-2 text-sm" role="dialog" aria-label="Scegli le categorie">
+    <div class="relative mb-2">
+      <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-ink-subtle pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="catpick-search" type="text" placeholder="Cerca categoria…" spellcheck="false" autocomplete="off" aria-label="Cerca categoria" class="field field-sm !pl-9">
+    </div>
+    <div id="catpick-list" class="max-h-[min(22rem,55vh)] overflow-y-auto space-y-0.5" role="listbox" aria-multiselectable="true" aria-label="Categorie"></div>
+    <div class="flex items-center gap-2 mt-2 pt-2 border-t border-line">
+      <span id="catpick-count" class="flex-1 min-w-0 truncate text-xs text-ink-subtle"></span>
+      <button id="catpick-clear" type="button" class="btn btn-secondary btn-sm">Deseleziona</button>
+      <button id="catpick-show" type="button" class="btn btn-primary btn-sm">Mostra</button>
+    </div>
+  </div>
+
+  <!-- Live TV: categorie, lista dei canali, player e guida -->
+  <div id="live-view" class="hidden flex-1 min-h-0 flex">
+    <aside id="sidebar" class="w-64 shrink-0 bg-s2 border-r border-line flex flex-col min-h-0">
+      <div class="p-3">
+        <div class="relative">
+          <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-ink-subtle pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="cat-search" type="text" placeholder="Cerca categoria…" spellcheck="false" aria-label="Cerca categoria" class="field field-sm !pl-9">
+        </div>
+      </div>
+      <nav id="cat-list" class="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5 min-h-0" aria-label="Categorie"></nav>
+    </aside>
+
+    <section id="list-col" class="relative w-96 shrink-0 border-r border-line flex flex-col min-h-0 bg-s1">
+      <div class="p-4 space-y-3">
+        <div class="flex items-center justify-between gap-2">
+          <h2 id="list-title" class="text-base font-bold truncate">Canali</h2>
+          <div class="flex items-center gap-1 shrink-0">
+            <span id="list-count" class="text-[11px] font-semibold tabular-nums text-ink-subtle mr-1"></span>
+            <button id="list-guide" class="btn btn-ghost btn-sm !px-2" title="Guida TV a griglia (G)" aria-label="Apri la guida TV a griglia">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10M15 10v10M8 2v4M16 2v4"/></svg>
+              Guida
+            </button>
+            <button id="list-clear-recent" class="hidden btn btn-ghost btn-sm" title="Svuota la cronologia">Svuota</button>
+            <button id="list-locate" class="hidden icon-btn" title="Vai al contenuto in riproduzione" aria-label="Vai al contenuto in riproduzione">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="relative">
+          <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-ink-subtle pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="stream-search" type="text" placeholder="Cerca canale" spellcheck="false" aria-label="Cerca nella lista" class="field field-sm !pl-9 !pr-14">
+          <span id="stream-search-kbd" class="desktop-only kbd absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">/</span>
+          <button id="stream-search-clear" class="hidden icon-btn absolute right-1 top-1/2 -translate-y-1/2 !w-7 !h-7" title="Svuota (Esc)" aria-label="Svuota ricerca">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+      </div>
+      <div id="list-scroller" class="flex-1 overflow-y-auto relative min-h-0 outline-none px-2" tabindex="0" aria-label="Elenco contenuti">
+        <div id="list-spacer" class="relative w-full">
+          <div id="list-rows"></div>
+        </div>
+        <div id="list-state" class="hidden absolute inset-0 flex flex-col items-center justify-center gap-3 p-6 text-center text-sm text-ink-muted"></div>
+      </div>
+    </section>
+
+    <main class="flex-1 min-w-0 flex flex-col min-h-0">
+      <div id="live-scroller" class="flex-1 min-h-0 overflow-y-auto p-5 space-y-4">
+        <div id="player-slot">
+          <div id="player-wrap" class="relative w-full aspect-video max-h-[72vh] bg-s0 rounded-xl overflow-hidden border border-line select-none">
+            <video id="video" class="w-full h-full bg-black" playsinline preload="auto" crossorigin="anonymous"></video>
+
+            <div id="player-empty" class="absolute inset-0 flex flex-col items-center justify-center gap-5 p-6 text-center bg-[radial-gradient(ellipse_at_center,rgba(229,9,20,0.08),transparent_60%)]">
+              <div class="w-16 h-16 rounded-2xl bg-s3 border border-line flex items-center justify-center text-accent">
+                <svg class="w-7 h-7" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11.04-6.86a1 1 0 0 0 0-1.72L9.5 4.28A1 1 0 0 0 8 5.14z"/></svg>
+              </div>
+              <p class="text-base font-bold text-ink">Scegli un canale dalla lista</p>
+              <div class="desktop-only flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs text-ink-subtle">
+                <span class="flex items-center gap-1.5"><span class="kbd">/</span> cerca</span>
+                <span class="flex items-center gap-1.5"><span class="kbd">↑</span><span class="kbd">↓</span> cambia canale</span>
+                <span class="flex items-center gap-1.5"><span class="kbd">?</span> tutte le scorciatoie</span>
+              </div>
+            </div>
+
+            <div id="player-spinner" class="hidden absolute inset-0 flex flex-col items-center justify-center gap-3 pointer-events-none">
+              <svg class="w-12 h-12 text-accent spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 3a9 9 0 1 0 9 9" stroke-linecap="round"/></svg>
+              <p id="spinner-text" class="glass text-xs text-ink rounded-md px-2 py-1 max-w-md empty:hidden"></p>
+            </div>
+
+            <div id="osd-top" class="absolute inset-x-0 top-0 px-5 pt-4 pb-12 bg-gradient-to-b from-black/80 to-transparent items-center gap-3 pointer-events-none transition-opacity duration-300">
+              <button id="osd-back" class="vbtn pointer-events-auto !w-11 !h-11 shrink-0 -ml-1" title="Indietro (Esc)" aria-label="Torna indietro">
+                <svg class="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+              </button>
+              <div id="osd-logo" class="w-11 h-11 shrink-0 rounded-lg bg-glass-hover border border-glass-line overflow-hidden flex items-center justify-center text-sm font-extrabold text-ink-muted"></div>
+              <div class="min-w-0">
+                <div id="osd-name" class="text-base font-bold text-ink truncate"></div>
+                <div id="osd-sub" class="text-xs text-ink-muted truncate"></div>
+              </div>
+            </div>
+
+            <div id="osd-hint" class="hidden glass absolute left-1/2 -translate-x-1/2 top-20 max-w-xl px-3 py-2 rounded-lg text-xs font-medium text-ink text-center select-text"></div>
+
+            <div id="osd-center" class="glass absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none px-5 py-3 rounded-2xl text-ink text-xl font-bold tabular-nums flex items-center gap-2 opacity-0 transition-opacity duration-200" aria-live="polite"></div>
+
+            <div id="player-error" class="hidden absolute inset-0 bg-scrim backdrop-blur-sm flex flex-col items-center justify-center gap-4 p-6 pb-16 text-center">
+              <div class="w-12 h-12 rounded-full bg-danger-soft flex items-center justify-center">
+                <svg class="w-6 h-6 text-danger" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v5M12 16h.01"/></svg>
+              </div>
+              <p id="player-error-text" class="text-sm text-ink max-w-lg select-text"></p>
+              <div class="flex gap-2">
+                <button id="err-retry" class="btn btn-secondary">Riprova</button>
+                <button id="err-external" class="btn btn-primary"><span class="desktop-only">Apri in MPV/VLC</span><span class="android-only">Apri in un altro player</span></button>
+              </div>
+            </div>
+
+            <div id="tracks-menu" class="glass hidden absolute right-3 bottom-16 z-30 w-80 max-h-[calc(100%-5rem)] overflow-y-auto rounded-xl shadow-pop p-2 text-sm" role="menu" aria-label="Audio e sottotitoli"></div>
+
+            <div id="controls" class="absolute inset-x-0 bottom-0 px-4 pb-3 pt-10 bg-gradient-to-t from-black/90 via-black/50 to-transparent transition-opacity duration-300">
+              <div id="seek-row" class="hidden relative mb-1">
+                <div id="seek-tip" class="glass hidden absolute bottom-5 -translate-x-1/2 px-1.5 py-0.5 rounded text-[11px] font-semibold tabular-nums text-ink pointer-events-none"></div>
+                <input id="seek" type="range" min="0" max="1000" value="0" step="1" class="xr w-full" aria-label="Posizione">
+              </div>
+              <div class="flex items-center gap-1 text-ink">
+                <button id="btn-play" class="vbtn" title="Play/Pausa (Spazio)" aria-label="Play/Pausa"></button>
+                <button id="btn-prev" class="vbtn hidden" title="Canale precedente (↑)" aria-label="Canale precedente">
+                  <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zM20 6.2v11.6a1 1 0 0 1-1.5.86L9.6 12.86a1 1 0 0 1 0-1.72l8.9-5.8A1 1 0 0 1 20 6.2z"/></svg>
+                </button>
+                <button id="btn-next" class="vbtn hidden" title="Canale successivo (↓)" aria-label="Canale successivo">
+                  <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M16 5h2v14h-2zM4 6.2v11.6a1 1 0 0 0 1.5.86l8.9-5.8a1 1 0 0 0 0-1.72l-8.9-5.8A1 1 0 0 0 4 6.2z"/></svg>
+                </button>
+                <button id="btn-back10" class="vbtn hidden" title="Indietro 10 s (←)" aria-label="Indietro 10 secondi">
+                  <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><text x="12" y="15.5" font-size="8" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">10</text></svg>
+                </button>
+                <button id="btn-fwd10" class="vbtn hidden" title="Avanti 10 s (→)" aria-label="Avanti 10 secondi">
+                  <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/><text x="12" y="15.5" font-size="8" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">10</text></svg>
+                </button>
+                <button id="btn-stop" class="vbtn" title="Stop" aria-label="Stop">
+                  <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>
+                </button>
+                <button id="btn-mute" class="vbtn" title="Muto (M)" aria-label="Muto"></button>
+                <input id="volume" type="range" min="0" max="100" value="100" class="xr w-24" aria-label="Volume" title="Volume (+/−, rotella del mouse)">
+                <span id="time" class="text-xs font-semibold tabular-nums text-ink-muted ml-2 whitespace-nowrap"></span>
+                <span id="live-badge" class="hidden badge badge-live ml-2"><span class="badge-dot"></span>Live</span>
+                <div class="flex-1"></div>
+                <button id="btn-tracks" class="vbtn hidden" title="Audio e sottotitoli" aria-label="Audio e sottotitoli" aria-haspopup="menu" aria-expanded="false">
+                  <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 15h4M13 15h5M6 11h8M16.5 11h1.5"/></svg>
+                </button>
+                <button id="btn-reload" class="vbtn" title="Ricarica stream (R)" aria-label="Ricarica stream">
+                  <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+                </button>
+                <button id="btn-pip" class="vbtn" title="Picture in Picture (P)" aria-label="Picture in Picture">
+                  <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><rect x="12" y="12" width="7" height="5" rx="1" fill="currentColor"/></svg>
+                </button>
+                <button id="btn-theater" class="vbtn" title="Modalità cinema (T)" aria-label="Modalità cinema" aria-pressed="false">
+                  <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/></svg>
+                </button>
+                <button id="btn-fs" class="vbtn" title="Schermo intero (F)" aria-label="Schermo intero">
+                  <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Info canale -->
+        <div id="info-panel" class="bg-s2 border border-line rounded-xl p-4 flex flex-wrap gap-4 items-start">
+          <div id="info-logo" class="logo-tile w-20 h-20 shrink-0 rounded-lg flex items-center justify-center overflow-hidden text-ink-muted text-xl font-extrabold"></div>
+          <div class="flex-1 min-w-[14rem] space-y-1.5">
+            <div class="flex items-center gap-2 min-w-0">
+              <span id="info-type" class="hidden badge shrink-0"></span>
+              <h3 id="info-name" class="text-xl font-bold tracking-tight truncate select-text">Nessun contenuto in riproduzione</h3>
+            </div>
+            <p id="info-cat" class="text-sm text-ink-muted truncate"></p>
+            <!-- guida TV: in onda e successivo -->
+            <div id="info-epg" class="hidden space-y-1.5 py-1">
+              <div class="flex items-baseline gap-2 min-w-0">
+                <span class="overline shrink-0">Ora</span>
+                <span id="epg-now-title" class="text-sm font-bold text-ink truncate select-text"></span>
+                <span id="epg-now-time" class="text-[11px] font-semibold tabular-nums text-ink-subtle shrink-0 ml-auto"></span>
+              </div>
+              <div class="h-1 rounded-full bg-s4 overflow-hidden"><div id="epg-now-bar" class="h-full bg-accent rounded-full" style="width:0%"></div></div>
+              <p id="epg-now-desc" class="text-xs text-ink-muted line-clamp-2 select-text"></p>
+              <div class="flex items-baseline gap-2 min-w-0">
+                <span class="overline shrink-0">Dopo</span>
+                <span id="epg-next-title" class="text-xs font-semibold text-ink-muted truncate"></span>
+                <span id="epg-next-time" class="text-[11px] font-semibold tabular-nums text-ink-subtle shrink-0 ml-auto"></span>
+              </div>
+            </div>
+            <!-- scheda film / episodio -->
+            <p id="info-meta" class="hidden text-xs font-medium text-ink-subtle"></p>
+            <p id="info-plot" class="hidden text-sm text-ink-muted line-clamp-3 select-text"></p>
+            <p id="info-cast" class="hidden text-xs text-ink-subtle line-clamp-1 select-text"></p>
+            <p id="info-status" class="text-xs font-medium text-ink"></p>
+            <p id="info-tech" class="text-xs font-mono text-ink-subtle select-text"></p>
+            <p id="info-latency" class="text-xs font-mono text-ink-subtle tabular-nums"></p>
+            <div id="info-hint" class="hidden text-xs font-medium text-accent-ink bg-accent-soft rounded-md px-2 py-1.5 select-text"></div>
+          </div>
+          <div class="flex flex-col gap-2 shrink-0 w-52 ml-auto">
+            <button id="btn-external" disabled class="btn btn-primary">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 3h7v7M21 3l-9 9M19 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5"/></svg>
+              <span class="desktop-only">Apri in MPV/VLC</span><span class="android-only">Apri in un altro player</span>
+            </button>
+            <div class="grid grid-cols-2 gap-2">
+              <button id="btn-fav" disabled class="btn btn-secondary !px-3 !gap-1.5"></button>
+              <button id="btn-copy" disabled class="btn btn-secondary !px-3 !gap-1.5" title="Copia URL stream negli appunti">
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                URL
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Catch-up: programmi passati del canale in riproduzione -->
+        <div id="catchup-box" class="hidden bg-s2 border border-line rounded-xl">
+          <div class="flex items-center gap-2 px-4 pt-3 pb-2">
+            <span class="text-accent">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 8v4l2.5 1.5"/></svg>
+            </span>
+            <h3 class="text-sm font-bold">Rivedi i programmi passati</h3>
+            <span id="catchup-sub" class="text-[11px] font-semibold text-ink-subtle ml-auto"></span>
+          </div>
+          <div id="catchup-list" class="max-h-72 overflow-y-auto px-2 pb-2 space-y-0.5"></div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Guida TV a griglia: canali della lista in righe, orari in colonne -->
+    <section id="guide-view" class="hidden flex-1 min-w-0 flex flex-col min-h-0 bg-s1" aria-label="Guida TV">
+      <div id="guide-bar" class="flex items-center gap-3 px-5 pt-4 pb-3 border-b border-line">
+        <div class="min-w-0 shrink">
+          <h2 class="text-base font-bold leading-tight">Guida TV</h2>
+          <p id="guide-sub" class="text-[11px] font-medium text-ink-subtle truncate"></p>
+        </div>
+        <div id="guide-days" class="flex gap-1 overflow-x-auto ml-auto min-w-0 pb-0.5" role="tablist" aria-label="Giorno"></div>
+        <button id="guide-now-btn" class="btn btn-secondary btn-sm shrink-0" title="Torna all'ora attuale">Adesso</button>
+        <button id="guide-close" class="icon-btn shrink-0" title="Chiudi la guida (Esc)" aria-label="Chiudi la guida">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div id="guide-status" class="hidden flex items-center gap-2 px-5 py-2 border-b border-line text-xs font-medium text-ink-muted" role="status"></div>
+      <div id="guide-scroller" class="relative flex-1 min-h-0 overflow-auto outline-none" tabindex="0" aria-label="Griglia dei programmi">
+        <div id="guide-canvas" class="relative">
+          <div id="guide-head" class="sticky top-0 z-20 flex bg-s1 border-b border-line"></div>
+          <div id="guide-rows"></div>
+          <div id="guide-now-line" class="hidden absolute top-0 w-0.5 bg-live pointer-events-none z-[5]"></div>
+        </div>
+        <div id="guide-empty" class="hidden absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-ink-muted"></div>
+      </div>
+      <div id="guide-legend" class="flex flex-wrap items-center gap-x-5 gap-y-1 px-5 py-2 border-t border-line text-[11px] font-medium text-ink-subtle">
+        <span class="flex items-center gap-1.5"><span class="gp-key gp-live"></span>In onda: clic per guardare</span>
+        <span class="flex items-center gap-1.5"><span class="gp-key gp-archive"></span>Passato con archivio: clic per rivedere</span>
+        <span class="flex items-center gap-1.5"><span class="gp-key gp-past"></span>Passato senza archivio</span>
+        <span class="flex items-center gap-1.5"><span class="gp-key"></span>In programma</span>
+        <span class="ml-auto">Clic sul nome di un canale per guardarlo · <span class="kbd">G</span> o <span class="kbd">Esc</span> chiude</span>
+      </div>
+    </section>
+  </div>
+
+  <!-- Home, Film e Serie: hero e righe di locandine (09b-browse.js) -->
+  <section id="browse-view" class="hidden flex-1 min-h-0 relative" aria-label="Catalogo">
+    <div id="browse-scroller" class="absolute inset-0 overflow-y-auto overflow-x-hidden outline-none" tabindex="-1">
+      <div id="browse-page" class="relative"></div>
     </div>
   </section>
+
+  <!-- Scheda di film e serie (09c-detail.js) -->
+  <div id="detail-view" class="hidden fixed inset-0 z-[35] bg-scrim overflow-y-auto outline-none" role="dialog" aria-modal="true" aria-labelledby="detail-title" tabindex="-1">
+    <div id="detail-card" class="modal-card relative mx-auto my-8 w-[min(960px,calc(100%-3rem))] bg-s2 rounded-xl overflow-hidden shadow-pop"></div>
+  </div>
+
+  <!-- Player a tutta finestra per film ed episodi: #player-wrap si sposta qui (07-controls.js) -->
+  <div id="player-stage" class="hidden fixed inset-0 z-[38] bg-black"></div>
 </div>
 
 <!-- Finestra modale (conferme, scorciatoie): sopra il pannello Impostazioni (z-40) -->
@@ -499,7 +763,7 @@
   <div class="modal-card w-full max-w-md bg-s2 border border-line rounded-2xl shadow-pop p-5">
     <h2 id="modal-title" class="text-base font-bold mb-3"></h2>
     <div id="modal-body" class="text-sm text-ink-muted"></div>
-    <div id="modal-actions" class="flex justify-end gap-2 mt-5"></div>
+    <div id="modal-actions" class="flex flex-wrap justify-end gap-2 mt-5"></div>
   </div>
 </div>
 
@@ -526,15 +790,15 @@
       <section class="space-y-3">
         <p class="overline">Canali live</p>
         <div class="set-row">
-          <div><p class="font-bold text-ink">Buffer</p><p class="set-help">Minimo e Medio si adattano alle pause del provider. Stabile: avvio immediato, 10–30 s dietro la diretta.</p></div>
+          <div><p class="font-bold text-ink">Buffer</p><p class="set-help" id="set-lat-help">Minimo e Medio si adattano alle pause del provider. Stabile: avvio immediato, 10–30 s dietro la diretta.</p></div>
           <div class="seg" data-setting="lat" role="radiogroup" aria-label="Buffer canali live">
-            <button data-v="min" role="radio">Minimo <small>≥0,6 s</small></button><button data-v="bal" role="radio">Medio <small>≥1,5 s</small></button><button data-v="stable" role="radio">Stabile <small>immediato</small></button>
+            <button data-v="min" role="radio">Minimo <small data-web="≥0,6 s">≥0,6 s</small></button><button data-v="bal" role="radio">Medio <small data-web="≥1,5 s">≥1,5 s</small></button><button data-v="stable" role="radio">Stabile <small data-web="immediato">immediato</small></button>
           </div>
         </div>
         <div class="set-row">
-          <div><p class="font-bold text-ink">Modalità stream</p><p class="set-help">"Forza ffmpeg" converte sempre l'audio.</p></div>
+          <div><p class="font-bold text-ink">Modalità stream</p><p class="set-help desktop-only">"Forza ffmpeg" converte sempre l'audio.</p><p class="set-help android-only">HLS se il provider non manda bene il formato TS.</p></div>
           <div class="seg" data-setting="fmt" role="radiogroup" aria-label="Modalità stream live">
-            <button data-v="ts" role="radio">Auto</button><button data-v="m3u8" role="radio">HLS</button><button data-v="ffmpeg" role="radio">ffmpeg</button>
+            <button data-v="ts" role="radio">Auto</button><button data-v="m3u8" role="radio">HLS</button><button data-v="ffmpeg" role="radio" class="desktop-only">ffmpeg</button>
           </div>
         </div>
       </section>
@@ -558,6 +822,11 @@
       </section>
       <div class="h-px bg-line"></div>
       <section class="space-y-3">
+        <p class="overline">Sincronizzazione</p>
+        <div id="set-sync" class="space-y-3"></div>
+      </section>
+      <div class="h-px bg-line desktop-only"></div>
+      <section class="space-y-3 desktop-only">
         <p class="overline">Conversione video</p>
         <div class="set-row">
           <div><p class="font-bold text-ink">Qualità</p><p class="set-help">Veloce avvia prima, Alta usa più GPU/CPU.</p></div>
@@ -572,9 +841,9 @@
       <section class="space-y-3">
         <p class="overline">Altro</p>
         <div class="set-row">
-          <div><p class="font-bold text-ink">Player esterno</p><p class="set-help">Usato da "Apri in MPV/VLC".</p></div>
+          <div><p class="font-bold text-ink">Player esterno</p><p class="set-help desktop-only">Usato da "Apri in MPV/VLC".</p><p class="set-help android-only">VLC se installato, altrimenti la scelta di Android.</p></div>
           <div class="seg" data-setting="external" role="radiogroup" aria-label="Player esterno preferito">
-            <button data-v="auto" role="radio">Automatico</button><button data-v="mpv" role="radio">mpv</button><button data-v="vlc" role="radio">VLC</button>
+            <button data-v="auto" role="radio">Automatico</button><button data-v="mpv" role="radio" class="desktop-only">mpv</button><button data-v="vlc" role="radio">VLC</button>
           </div>
         </div>
         <div class="set-row">
@@ -593,6 +862,8 @@
 <div id="toast" role="status" aria-live="polite" class="hidden fixed bottom-5 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl text-sm shadow-pop border"></div>
 
 <script src="js/core.js"></script>
+<script src="js/sync-core.js"></script>
+<script src="js/sync-config.js"></script>
 <script src="js/01-base.js"></script>
 <script src="js/02-state.js"></script>
 <script src="js/03-login.js"></script>
@@ -603,6 +874,10 @@
 <script src="js/07-controls.js"></script>
 <script src="js/08-content.js"></script>
 <script src="js/09-guide.js"></script>
+<script src="js/09b-browse.js"></script>
+<script src="js/09c-detail.js"></script>
+<script src="js/09d-sync.js"></script>
+<script src="js/09e-tv.js"></script>
 <script src="js/10-main.js"></script>
 </body>
 </html>

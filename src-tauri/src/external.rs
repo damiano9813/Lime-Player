@@ -1,4 +1,5 @@
 //! Apertura dello stream in un player esterno (mpv, mpv.net, VLC).
+#![cfg_attr(target_os = "android", allow(dead_code, unused_imports))]
 
 use std::io;
 use std::path::PathBuf;
@@ -9,6 +10,37 @@ use reqwest::Url;
 #[cfg(windows)]
 use crate::util::CREATE_NO_WINDOW;
 use crate::util::{env_path, USER_AGENT};
+
+/// Android: si apre il selettore di sistema con i player installati (VLC, MX Player, Just Player…).
+#[cfg(target_os = "android")]
+#[tauri::command]
+pub async fn open_in_external_player(
+    app: tauri::AppHandle,
+    stream_url: String,
+    title: Option<String>,
+    live: Option<bool>,
+    prefer: Option<String>,
+) -> Result<String, String> {
+    #[derive(serde::Serialize)]
+    struct Args {
+        url: String,
+        title: String,
+        prefer: String,
+    }
+    let _ = live;
+    let url = stream_url.trim().to_string();
+    let parsed = Url::parse(&url).map_err(|_| "URL dello stream non valido".to_string())?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err("Sono supportati solo URL http:// e https://".to_string());
+    }
+    crate::transcode::release_parked();
+    let args = Args {
+        url,
+        title: title.unwrap_or_default().replace(['\r', '\n'], " "),
+        prefer: prefer.unwrap_or_default(),
+    };
+    crate::native::call(&app, "openExternal", args).await
+}
 
 pub fn player_candidates(name: &str, known: Vec<Option<PathBuf>>) -> Vec<PathBuf> {
     let mut out = vec![PathBuf::from(name)];
@@ -28,6 +60,7 @@ pub fn spawn_detached(cmd: &mut Command) -> io::Result<()> {
     cmd.spawn().map(|_| ())
 }
 
+#[cfg(not(target_os = "android"))]
 #[tauri::command]
 pub fn open_in_external_player(
     stream_url: String,

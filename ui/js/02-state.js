@@ -2,8 +2,9 @@
 'use strict';
 
 // ------------------------------------------------------------------ stato
-const ALL = '__all__', FAV = '__fav__', RECENT = '__recent__';
-const isVirtualCat = (id) => id === ALL || id === FAV || id === RECENT;
+const ALL = '__all__', FAV = '__fav__', RECENT = '__recent__', MULTI = '__multi__';
+// MULTI: più categorie insieme, quelle in S.multiCats
+const isVirtualCat = (id) => id === ALL || id === FAV || id === RECENT || id === MULTI;
 const RECENT_MAX = 40;
 const MODE_API = {
   live: { cats: 'get_live_categories', streams: 'get_live_streams', label: 'Live TV', allLabel: 'Tutti i canali', unit: 'canali' },
@@ -18,13 +19,19 @@ const S = {
   acctName: '',
   account: null,
   proxy: null,
-  mode: MODES.includes(lsGet('xp.mode', 'live')) ? lsGet('xp.mode', 'live') : 'live',
+  // vista mostrata: 'home' | 'live' | 'vod' | 'series' (09b-browse.js)
+  view: 'home',
+  // lista, categorie e zapping della colonna centrale: solo Live TV (Film e Serie sono a righe)
+  mode: 'live',
+  // categorie e canali della Live TV si caricano alla prima apertura
+  liveReady: false,
   categories: perMode(() => null),
   catNames: perMode(() => new Map()),
   // id dell'account collegato (XPCore.accountId): prefisso dei dati legati al provider
   acct: '',
   // categoria scelta, preferiti e recenti si caricano al login (loadAccountData)
   selectedCat: perMode(() => ALL),
+  multiCats: perMode(() => []),
   cache: new Map(),
   listAge: new Map(),
   list: [],
@@ -37,8 +44,6 @@ const S = {
   previous: null,
   favorites: perMode(() => []),
   recent: perMode(() => []),
-  // serie aperta nella colonna centrale: { item, info, season }
-  seriesView: null,
   liveFormat: ['ts', 'm3u8', 'ffmpeg'].includes(lsGet('xp.liveFormat', 'ts')) ? lsGet('xp.liveFormat', 'ts') : 'ts',
   // impostazioni del pannello (audio, qualità, lingue, player esterno)
   settings: XPCore.normalizeSettings(lsGet('xp.settings', null)),
@@ -81,6 +86,7 @@ function loadAccountData() {
   migrateLegacyData();
   pruneStoredData();
   S.selectedCat = perMode((m) => lsGet(ak('cat.' + m), ALL));
+  S.multiCats = perMode((m) => { const v = lsGet(ak('cats.' + m), []); return Array.isArray(v) ? v.map(String) : []; });
   S.favorites = perMode((m) => lsGet(ak('fav.' + m), []));
   S.recent = perMode((m) => lsGet(ak('recent.' + m), []));
 }
@@ -88,6 +94,7 @@ function loadAccountData() {
 function unloadAccountData() {
   S.acct = '';
   S.selectedCat = perMode(() => ALL);
+  S.multiCats = perMode(() => []);
   S.favorites = perMode(() => []);
   S.recent = perMode(() => []);
 }

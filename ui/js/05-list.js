@@ -37,7 +37,7 @@ function rowHtml(it, idx, terms) {
   }
   const lead = active ? `<span class="w-9 flex justify-end shrink-0">${ICONS.eq.replace('class="eq"', `class="eq${video.paused ? ' paused' : ''}"`)}</span>`
     : `<span class="w-7 text-right text-[11px] font-semibold tabular-nums text-ink-subtle shrink-0">${escapeHtml(it.num || idx + 1)}</span>`;
-  return `<div data-idx="${idx}" title="${escapeHtml(it.name)}" class="vrow absolute left-0 right-0 flex items-center gap-3 px-3 rounded-lg cursor-pointer transition-colors hover:bg-s2 ${active ? 'row-active' : ''}" style="top:${idx * ROW_H}px;height:${ROW_H}px">
+  return `<div data-idx="${idx}"${PLATFORM.tv ? ' tabindex="0"' : ''} title="${escapeHtml(it.name)}" class="vrow absolute left-0 right-0 flex items-center gap-3 px-3 rounded-lg cursor-pointer transition-colors hover:bg-s2 ${active ? 'row-active' : ''}" style="top:${idx * ROW_H}px;height:${ROW_H}px">
     ${lead}
     <div class="logo-tile w-10 h-10 rounded-lg shrink-0 overflow-hidden flex items-center justify-center text-[11px] font-extrabold text-ink-muted">${icon}</div>
     <div class="flex-1 min-w-0">
@@ -66,9 +66,9 @@ function renderList(force) {
   if (S.mode === 'live') scheduleRowEpg();
 }
 
-// apre la serie (lista episodi) oppure riproduce canale o film
+// apre la scheda della serie oppure riproduce canale o film
 function activateItem(it) {
-  if (S.mode === 'series') openSeries(it);
+  if (S.mode === 'series') openDetail('series', it);
   else playItem(it, S.mode);
 }
 

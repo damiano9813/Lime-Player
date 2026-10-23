@@ -77,3 +77,83 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq .assets > updater/assets.json
           node scripts/fix-updater-json.mjs updater/latest.json updater/assets.json
           gh release upload "$TAG" updater/latest.json --clobber
+
+  # APK per telefoni, tablet e Android TV, allegato alla stessa release (updater_android.rs lo cerca
+  # lì). Segreti: ANDROID_KEYSTORE_BASE64 (keystore in base64), ANDROID_KEYSTORE_PASSWORD,
+  # ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD. Senza keystore il job si ferma senza errori.
+  android:
+    needs: windows
+    runs-on: ubuntu-latest
+    env:
+      KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+    steps:
+      - name: Keystore presente?
+        id: ks
+        run: echo "ok=$([ -n "$KEYSTORE_B64" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        if: steps.ks.outputs.ok == 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.ks.outputs.ok == 'true'
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - uses: actions/setup-java@v4
+        if: steps.ks.outputs.ok == 'true'
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v3
+        if: steps.ks.outputs.ok == 'true'
+
+      - name: NDK
+        if: steps.ks.outputs.ok == 'true'
+        run: |
+          sdkmanager "ndk;27.2.12479018"
+          echo "NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.ks.outputs.ok == 'true'
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi
+
+      - uses: swatinem/rust-cache@v2
+        if: steps.ks.outputs.ok == 'true'
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Tauri CLI e dipendenze frontend
+        if: steps.ks.outputs.ok == 'true'
+        run: |
+          cargo install tauri-cli --version "^2" --locked
+          npm ci
+
+      - name: Firma
+        if: steps.ks.outputs.ok == 'true'
+        run: |
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          cat > src-tauri/gen/android/keystore.properties <<PROPS
+          storeFile=$RUNNER_TEMP/release.jks
+          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
+          PROPS
+
+      # un APK per ARM a 64 e 32 bit: tutti i telefoni e le TV/box Android
+      - name: Build APK
+        if: steps.ks.outputs.ok == 'true'
+        run: cargo tauri android build --apk --target aarch64 --target armv7
+
+      - name: Allega alla release
+        if: steps.ks.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          APK=$(find src-tauri/gen/android/app/build/outputs/apk -name '*-release.apk' | head -n 1)
+          cp "$APK" "Xtream-Player_${VERSION}_android.apk"
+          gh release upload "v$VERSION" "Xtream-Player_${VERSION}_android.apk" --clobber

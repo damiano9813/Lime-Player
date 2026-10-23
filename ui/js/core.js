@@ -250,9 +250,9 @@
     }
     return out;
   }
-  // secondi di cache del live per i preset di latenza: "Stabile" tiene più margine
+  // secondi di cache del live per i preset di latenza: con mpv 2 s bastano anche a "Stabile"
   function mpvCacheSecs(preset) {
-    return preset === 'min' ? 1 : preset === 'bal' ? 2 : 4;
+    return preset === 'min' ? 1 : preset === 'bal' ? 1.5 : 2;
   }
 
   // Conversione decisa dalla PMT del live (tracce lette dal proxy nei primi millisecondi),
@@ -454,11 +454,110 @@
   function legacyKeyMoves(keys, acct) {
     return (keys || []).map((k) => LEGACY_KEY_RE.exec(k)).filter(Boolean).map((m) => [m[0], accountKey(acct, m[1])]);
   }
-  // posizione di ripresa: { p: secondi, t: data del salvataggio } (prima solo i secondi)
+  // posizione di ripresa: { p: secondi, t: data del salvataggio, d: durata se nota } (prima solo i secondi)
   function resumeSeconds(v) {
     const p = v && typeof v === 'object' ? v.p : v;
     return typeof p === 'number' && isFinite(p) && p > 0 ? p : 0;
   }
+  const posNum = (x) => (typeof x === 'number' && isFinite(x) && x > 0 ? x : 0);
+  // posizione, durata (0 se non salvata) e frazione vista
+  function resumeProgress(v, fallbackDur) {
+    const p = resumeSeconds(v);
+    const d = posNum(v && typeof v === 'object' ? v.d : 0) || posNum(fallbackDur);
+    return { p, d, pct: d ? Math.min(1, p / d) : 0 };
+  }
+
+  // ------------------------------------------------------------------ home
+  // "Continua a guardare": dopo i primi 30 s (come la ripresa) e prima dei titoli di coda
+  const RESUME_MIN = 30, WATCHED_RATIO = 0.95;
+  const watched = (r) => r.d > 0 && r.p / r.d >= WATCHED_RATIO;
+  // film recenti (dal più recente) con una posizione da riprendere
+  function continueFilms(recent, resumeOf, max) {
+    const out = [];
+    for (const item of recent || []) {
+      if (out.length >= max) break;
+      const r = resumeProgress(resumeOf(item));
+      if (r.p > RESUME_MIN && !watched(r)) out.push({ item, ...r });
+    }
+    return out;
+  }
+  // ultimo episodio visto di una serie: { id, label, title, d, next, done } (prima solo l'id: legacy)
+  function episodeRef(v) {
+    return v && typeof v === 'object' && v.id != null && v.id !== ''
+      ? { id: String(v.id), label: String(v.label || ''), title: String(v.title || ''), d: posNum(v.d) } : null;
+  }
+  function seriesLast(v) {
+    if (v == null || v === '' || typeof v === 'boolean') return null;
+    if (typeof v !== 'object') return { id: String(v), label: '', title: '', d: 0, next: null, done: false, legacy: true };
+    const ref = episodeRef(v);
+    return ref ? { ...ref, next: episodeRef(v.next), done: !!v.done, legacy: false } : null;
+  }
+  // serie recenti con l'episodio da cui ripartire: quello interrotto o, se finito, il successivo
+  function continueSeries(recent, lastOf, resumeOf, max) {
+    const out = [];
+    for (const item of recent || []) {
+      if (out.length >= max) break;
+      const last = seriesLast(lastOf(item));
+      if (!last) continue;
+      const r = resumeProgress(resumeOf(last.id), last.d);
+      if (last.done || watched(r)) {
+        if (last.next) out.push({ item, ep: last.next, p: 0, d: last.next.d, pct: 0, next: true });
+      } else if (r.p > RESUME_MIN || !last.legacy) {
+        // le voci legacy senza posizione possono essere episodi finiti: non si propongono
+        out.push({ item, ep: last, ...r, next: false });
+      }
+    }
+    return out;
+  }
+  // ------------------------------------------------------------------ catalogo a righe
+  // i più recenti per data (secondi Unix nel campo `field`: "added" dei film, "last_modified"
+  // delle serie); quelli senza data restano fuori
+  function recentlyAdded(items, field, max) {
+    const dated = [];
+    for (const it of items || []) {
+      const t = Number(it && it[field]);
+      if (t > 0) dated.push([t, it]);
+    }
+    dated.sort((a, b) => b[0] - a[0]);
+    return dated.slice(0, max).map((x) => x[1]);
+  }
+  // una riga per categoria, nell'ordine del provider; le categorie vuote non compaiono
+  function groupByCategory(items, cats) {
+    const by = new Map();
+    for (const it of items || []) {
+      const k = String(it.category_id);
+      if (!by.has(k)) by.set(k, []);
+      by.get(k).push(it);
+    }
+    return (cats || []).map((c) => ({ id: c.category_id, name: c.category_name, items: by.get(String(c.category_id)) || [] }))
+      .filter((g) => g.items.length);
+  }
+  // elementi delle categorie `ids` (più categorie insieme), nell'ordine delle categorie del provider
+  function itemsInCategories(items, cats, ids) {
+    const want = new Set((ids || []).map(String));
+    return groupByCategory(items, cats).filter((g) => want.has(String(g.id))).flatMap((g) => g.items);
+  }
+  // aggiornamento automatico delle liste: dovuto se l'ultimo risale ad almeno `everyMs` fa, se non
+  // c'è o se è nel futuro (orologio spostato indietro)
+  function refreshDue(lastMs, nowMs, everyMs) {
+    const last = Number(lastMs) || 0;
+    return last <= 0 || nowMs - last >= everyMs || last - nowMs > 3600000;
+  }
+  // ricerca per parole, tutte presenti e senza accenti (`_k`: nome già normalizzato, se c'è)
+  function searchItems(items, query, max) {
+    const terms = normKey(query).split(/\s+/).filter(Boolean);
+    const hits = [];
+    let total = 0;
+    if (!terms.length) return { items: hits, total };
+    for (const it of items || []) {
+      const k = it._k != null ? it._k : normKey(it.name);
+      if (!terms.every((t) => k.includes(t))) continue;
+      total += 1;
+      if (hits.length < max) hits.push(it);
+    }
+    return { items: hits, total };
+  }
+
   // valore spostato dalla migrazione: le vecchie posizioni non hanno data, prendono quella di oggi
   function migratedValue(key, value, now) {
     return /^xp\.resume\./.test(key) && typeof value === 'number' ? { p: value, t: now } : value;
@@ -477,7 +576,8 @@
   }
 
   return {
-    publicCreds, accountId, accountKey, legacyKeyMoves, resumeSeconds, migratedValue, prunableKind, staleEntries,
+    publicCreds, accountId, accountKey, legacyKeyMoves, resumeSeconds, resumeProgress, migratedValue, prunableKind, staleEntries,
+    continueFilms, seriesLast, continueSeries, recentlyAdded, groupByCategory, itemsInCategories, refreshDue, searchItems,
     escapeHtml, normKey, initials, fmtTime, debounce, highlight,
     buildStreamUrl, proxyUrl, transcodeUrl, subtitleUrl, timeshiftStart, timeshiftUrl,
     normLang, langName, codecName, channelsLabel, trackLabel, pickTrack, audioCopyOk, audioTrackRoute, PREFERRED_LANGS,

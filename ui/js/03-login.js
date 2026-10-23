@@ -207,8 +207,9 @@ function leaveAccount() {
   unloadAccountData();
   S.categories = perMode(() => null);
   S.catNames = perMode(() => new Map());
-  closeSeries();
+  S.liveReady = false;
   closeGuide();
+  resetBrowse();
   resetGuide();
   S.list = []; S.filtered = [];
   $('acct-switch').classList.add('hidden');
@@ -241,11 +242,17 @@ function enterApp() {
   renderAccountSwitch();
   renderCaps();
   setTheater(lsGet('xp.theater', false));
-  switchMode(S.mode, true);
+  // all'accesso la Home; la Live TV carica i canali alla prima apertura
+  setView('home');
+  renderListsAge();
+  // aggiornamento giornaliero delle liste: dopo il primo caricamento, per non rallentare l'avvio
+  const acct = S.acct;
+  setTimeout(() => { if (S.acct === acct) maybeRefreshLists(); }, 8000);
 }
 
 function renderAccount() {
   const a = S.account;
+  $('acct-avatar').textContent = initials(S.acctName || (a && a.username));
   if (!a) { $('account-box').innerHTML = ''; return; }
   let exp = 'Illimitata', expCls = 'text-ink', daysLeft = Infinity;
   const ts = parseInt(a.exp_date, 10);
@@ -270,6 +277,8 @@ function renderAccount() {
 function renderCaps() {
   const c = S.caps || {};
   const el = $('caps-box');
+  // su Android il motore è ExoPlayer: ffmpeg esterno non serve
+  if (PLATFORM.android) { el.classList.add('hidden'); return; }
   if (c.ffmpeg) {
     el.textContent = `Codec extra: ffmpeg attivo · video ${c.h264_encoder || 'software'}`;
     el.title = `${c.version || 'ffmpeg'}\n${c.ffmpeg}`;

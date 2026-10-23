@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Design system "Xtream Player": tema Notte di base, tema OLED in modalità cinema. */
+/* Design system "Xtream Player": tema scuro in stile streaming (rosso e nero), tema OLED in modalità cinema. */
 @layer base {
   @font-face {
     font-family: 'Manrope Variable';
@@ -30,37 +30,37 @@
 
   :root {
     color-scheme: dark;
-    --surface-0: #07080b;
-    --surface-100: #0d0f14;
-    --surface-200: #14171e;
-    --surface-300: #1b1f28;
-    --surface-400: #252a35;
-    --line: #262b36;
-    --line-strong: #3a4150;
-    --ink: #f2f3f5;
-    --ink-muted: #a3a9b6;
-    --ink-subtle: #858c9b;
-    --accent: #f5a524;
-    --accent-hover: #ffb84d;
-    --accent-soft: rgba(245, 165, 36, 0.14);
-    --accent-ink: #ffc56b;
-    --on-accent: #1a1206;
-    --live: #e5322d;
+    --surface-0: #000000;
+    --surface-100: #141414;
+    --surface-200: #1b1b1b;
+    --surface-300: #262626;
+    --surface-400: #333333;
+    --line: #2a2a2a;
+    --line-strong: #404040;
+    --ink: #ffffff;
+    --ink-muted: #b3b3b3;
+    --ink-subtle: #8c8c8c;
+    --accent: #e50914;
+    --accent-hover: #f6121d;
+    --accent-soft: rgba(229, 9, 20, 0.16);
+    --accent-ink: #ff5a62;
+    --on-accent: #ffffff;
+    --live: #e50914;
     --on-live: #ffffff;
-    --danger: #ff7a6e;
-    --danger-soft: rgba(229, 50, 45, 0.16);
-    --success: #3ecf8e;
-    --success-soft: rgba(62, 207, 142, 0.14);
-    --info: #5cb8ff;
-    --scrim: rgba(0, 0, 0, 0.6);
-    --glass: rgba(16, 18, 24, 0.86);
-    --glass-line: rgba(255, 255, 255, 0.08);
-    --glass-hover: rgba(255, 255, 255, 0.12);
+    --danger: #ff6b6b;
+    --danger-soft: rgba(229, 9, 20, 0.16);
+    --success: #46d369;
+    --success-soft: rgba(70, 211, 105, 0.14);
+    --info: #54b9c5;
+    --scrim: rgba(0, 0, 0, 0.7);
+    --glass: rgba(20, 20, 20, 0.88);
+    --glass-line: rgba(255, 255, 255, 0.1);
+    --glass-hover: rgba(255, 255, 255, 0.14);
     --track: rgba(255, 255, 255, 0.25);
-    --focus-ring: var(--accent);
-    --shadow-pop: 0 24px 48px -12px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.04);
-    --shadow-glow: 0 8px 24px -8px rgba(245, 165, 36, 0.55);
-    --shadow-thumb: 0 0 0 4px rgba(245, 165, 36, 0.35);
+    --focus-ring: #ffffff;
+    --shadow-pop: 0 24px 48px -12px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.04);
+    --shadow-glow: 0 8px 24px -8px rgba(229, 9, 20, 0.55);
+    --shadow-thumb: 0 0 0 4px rgba(229, 9, 20, 0.35);
   }
 
   /* tema OLED: nero puro quando la modalità cinema è attiva */
@@ -72,8 +72,8 @@
     --surface-400: #1e1e24;
     --line: #1f1f26;
     --line-strong: #33333d;
-    --accent-soft: rgba(245, 165, 36, 0.16);
-    --scrim: rgba(0, 0, 0, 0.72);
+    --accent-soft: rgba(229, 9, 20, 0.18);
+    --scrim: rgba(0, 0, 0, 0.75);
     --glass: rgba(10, 10, 12, 0.9);
     --glass-line: rgba(255, 255, 255, 0.1);
   }

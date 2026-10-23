@@ -10,7 +10,7 @@ function setRangeFill(el) { const p = ((el.value - el.min) / (el.max - el.min)) 
 const isPaused = () => (mpvActive() ? M.paused : video.paused && !P.rebuffering);
 function updatePlayButton() {
   $('btn-play').innerHTML = isPaused() || !S.current ? ICONS.play : ICONS.pause;
-  rowsLayer.querySelectorAll('.eq').forEach((e) => e.classList.toggle('paused', isPaused()));
+  document.querySelectorAll('#list-rows .eq, #now-pill .eq, #browse-page .eq').forEach((e) => e.classList.toggle('paused', isPaused()));
 }
 function updateVolumeUi() {
   $('btn-mute').innerHTML = video.muted || video.volume === 0 ? ICONS.mute : ICONS.vol;
@@ -50,12 +50,23 @@ function togglePlay() {
     video.pause();
   }
 }
-function toggleFullscreen() {
+// Android: la WebView non ha l'API Fullscreen, il player copre la pagina (l'app è già a tutto schermo)
+function setFakeFullscreen(on) {
+  wrap.classList.toggle('fs-fake', on);
+  document.dispatchEvent(new Event('fullscreenchange'));
+}
+function exitFullscreen() {
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  else if (wrap.classList.contains('fs-fake')) setFakeFullscreen(false);
+}
+function toggleFullscreen() {
+  if (fsElement()) exitFullscreen();
+  else if (PLATFORM.android) setFakeFullscreen(true);
   else wrap.requestFullscreen().catch(() => {});
 }
 function togglePip() {
-  if (mpvActive()) { toast('Picture in Picture non disponibile con il motore mpv: passa al motore del browser nelle impostazioni', 'info'); return; }
+  if (PLATFORM.android) { toast('Picture in Picture non disponibile su Android', 'info'); return; }
+  if (mpvActive()) { toast(`Picture in Picture non disponibile con il motore ${ENGINE_NAME}: passa al motore del browser nelle impostazioni`, 'info'); return; }
   (async () => {
     try {
       if (document.pictureInPictureElement) await document.exitPictureInPicture();
@@ -72,6 +83,41 @@ function setTheater(on) {
   if (!on) { renderList(true); locateCurrent(false); }
 }
 const theaterOn = () => $('app-view').classList.contains('theater');
+
+// --- player a tutta finestra: film ed episodi; canali e catch-up restano nella Live TV ---
+const isFullItem = (item, mode) => mode === 'vod' && !item._catchup;
+const playerFull = () => document.documentElement.classList.contains('player-full');
+function mountPlayer(full) {
+  if (full === playerFull()) return;
+  const target = $(full ? 'player-stage' : 'player-slot');
+  // spostato senza staccarlo dalla pagina: video e mpegts.js continuano a riprodurre
+  try { target.moveBefore(wrap, null); } catch { target.appendChild(wrap); }
+  document.documentElement.classList.toggle('player-full', full);
+  // telefono: film ed episodi in orizzontale come nelle app di streaming, poi di nuovo libero
+  if (PLATFORM.android && !PLATFORM.tv) invoke('set_orientation', { landscape: full }).catch(() => {});
+  $('player-stage').classList.toggle('hidden', !full);
+  closeTracksMenu();
+  poke();
+  syncMpvRect();
+}
+// posizione al momento dell'uscita; ai titoli di coda (95%, come la Home) il contenuto è finito
+function saveResumeNow() {
+  const rk = S.current && S.currentMode === 'vod' ? resumeKey(S.current) : null;
+  const t = rk ? currentPlayTime() : 0, d = currentDuration();
+  if (!(t > 0)) return;
+  if (isFinite(d) && d > 0 && t / d >= 0.95) lsDel(rk);
+  else setResume(rk, Math.floor(t), d);
+}
+// "Indietro": si ferma la riproduzione e si torna alla scheda o alle righe da cui era partita
+function closePlayer() {
+  if (!playerFull()) return;
+  exitFullscreen();
+  saveResumeNow();
+  destroyPlayer();
+  resetPlayerUi();
+  onPlayerClosed();
+}
+$('osd-back').addEventListener('click', closePlayer);
 
 function saveVolume() { lsSet('xp.volume', { v: video.volume, m: video.muted }); }
 function changeVolume(delta) {
@@ -201,9 +247,19 @@ function renderSettings() {
     });
   });
   $('set-engine-mpv').disabled = !M.available;
-  $('set-engine-help').textContent = M.available
-    ? 'mpv: decodifica hardware, nessuna conversione, buffer stabile. Browser: il motore precedente, con Picture in Picture.'
-    : 'libmpv-2.dll non trovata: si usa il motore del browser. Reinstalla l\'app per avere mpv.';
+  $('set-engine-mpv').textContent = PLATFORM.android ? 'ExoPlayer' : 'mpv';
+  $('set-engine-help').textContent = PLATFORM.android
+    ? 'ExoPlayer: il player di Android, decodifica hardware e audio AC3/DTS. Browser: il motore web, se un canale non parte.'
+    : M.available
+      ? 'mpv: decodifica hardware, nessuna conversione, buffer stabile. Browser: il motore precedente, con Picture in Picture.'
+      : 'libmpv-2.dll non trovata: si usa il motore del browser. Reinstalla l\'app per avere mpv.';
+  // il buffer del live cambia con il motore: mpv tiene una cache fissa
+  $('set-lat-help').textContent = useMpv()
+    ? `${ENGINE_NAME} legge il canale dal provider con una cache fissa: più è corta, più si è vicini alla diretta.`
+    : 'Minimo e Medio si adattano alle pause del provider. Stabile: avvio immediato, 10–30 s dietro la diretta.';
+  document.querySelectorAll('[data-setting="lat"] small').forEach((el) => {
+    el.textContent = useMpv() ? XPCore.mpvCacheSecs(el.parentElement.dataset.v).toLocaleString('it-IT') + ' s' : el.dataset.web;
+  });
   fillLangSelect($('set-audio-lang'), st.audioLang, 'Nessuna preferenza');
   fillLangSelect($('set-sub-lang'), st.subLang, 'Disattivati');
   const c = S.caps || {};
@@ -216,6 +272,7 @@ function openSettings() {
   closeTracksMenu();
   settingsReturnFocus = document.activeElement;
   renderSettings();
+  renderSyncSettings();
   $('settings-panel').classList.remove('hidden');
   $('settings-close').focus();
 }
