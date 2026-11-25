@@ -68,6 +68,8 @@ document.addEventListener('keydown', (ev) => {
   if ($('app-view').classList.contains('hidden')) return;
   if (modalOpen()) { if (ev.key === 'Escape') { ev.preventDefault(); closeModal(false); } return; }
   if (settingsPanelOpen()) { if (ev.key === 'Escape') { ev.preventDefault(); closeSettings(); } return; }
+  // pagina "Categorie e gruppi": Esc torna indietro, gli altri tasti restano alla pagina
+  if (customOpen()) { if (ev.key === 'Escape') { ev.preventDefault(); customBack(); } return; }
   if (ev.key === 'Escape' && acctMenuOpen()) { ev.preventDefault(); closeAcctMenu(); $('acct-btn').focus(); return; }
   const tag = (ev.target && ev.target.tagName) || '';
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') { onTypingKey(ev); return; }

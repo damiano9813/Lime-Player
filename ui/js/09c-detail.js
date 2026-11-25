@@ -105,7 +105,11 @@ function actionsHtml() {
   }
   const fav = isFav(D.mode, it.stream_id);
   const favLabel = fav ? 'Togli dalla mia lista' : 'Aggiungi alla mia lista';
-  return play + `<button class="round-btn" data-dt-fav aria-pressed="${fav}" title="${favLabel}" aria-label="${favLabel}">${fav ? FAV_ON : FAV_ADD}</button>`;
+  // gruppi personali (04b-custom.js): il pulsante è evidenziato se il titolo è già in un gruppo
+  const groups = groupsOf(D.mode, it).map((g) => g.name);
+  const grpLabel = groups.length ? `Nei gruppi: ${groups.join(', ')}` : 'Aggiungi a un gruppo';
+  return play + `<button class="round-btn" data-dt-fav aria-pressed="${fav}" title="${favLabel}" aria-label="${favLabel}">${fav ? FAV_ON : FAV_ADD}</button>` +
+    `<button class="round-btn" data-dt-group aria-pressed="${groups.length > 0}" title="${escapeHtml(grpLabel)}" aria-label="${escapeHtml(grpLabel)}">${(groups.length ? CE_ICONS.folder : CE_ICONS.folderPlus).replace('w-4 h-4', 'w-5 h-5')}</button>`;
 }
 function updateDetailActions() {
   const el = detailOpen() && detailCard.querySelector('[data-dt-actions]');
@@ -213,6 +217,7 @@ detailCard.addEventListener('click', (ev) => {
   if (!it) return;
   if (t.closest('[data-dt-close]')) { closeDetail(); return; }
   if (t.closest('[data-dt-fav]')) { toggleFav(D.mode, it); return; }
+  if (t.closest('[data-dt-group]')) { openGroupPicker(D.mode, it); return; }
   const play = t.closest('[data-dt-play]');
   if (play) {
     if (D.mode === 'vod') playItem(it, 'vod');

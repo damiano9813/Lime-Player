@@ -2,7 +2,7 @@
 
 Player IPTV compatibile con le API Xtream Codes per **Windows**, **Android** (telefoni e tablet) e
 **Android TV / Google TV**, con la stessa interfaccia su tutti i dispositivi e la
-[sincronizzazione](#sincronizzazione) di playlist, preferiti e punti di ripresa.
+[sincronizzazione](#sincronizzazione) di playlist, preferiti, punti di ripresa e categorie personalizzate.
 
 ## Struttura
 
@@ -26,6 +26,7 @@ Lime-Player/
 │     ├─ 02-state.js             costanti e stato condiviso
 │     ├─ 03-login.js             playlist salvate, accesso, cambio di playlist, account
 │     ├─ 04-library.js           lista della Live TV, cataloghi, preferiti, recenti
+│     ├─ 04b-custom.js           pagina "Categorie e gruppi": nascoste, nomi, ordine, gruppi personali
 │     ├─ 05-list.js              lista virtualizzata
 │     ├─ 06-player.js            player del browser, conversione ffmpeg, buffer adattivo
 │     ├─ 06b-mpv.js              motore mpv: rettangolo del video, comandi, eventi
@@ -294,11 +295,11 @@ Gli APK sono in `src-tauri/gen/android/app/build/outputs/apk/`. Per installarlo 
 ## Sincronizzazione
 
 PC, telefono e TV possono condividere le **playlist (con le password)**, i **preferiti**, i
-**recenti**, i **punti di ripresa** di film ed episodi, l'ultimo episodio visto di ogni serie e le
-lingue preferite. Tutto viene cifrato sul dispositivo (AES-GCM) con chiavi derivate da un
+**recenti**, i **punti di ripresa** di film ed episodi, l'ultimo episodio visto di ogni serie, le
+**categorie personalizzate** e i **gruppi personali** e le lingue preferite. Tutto viene cifrato sul dispositivo (AES-GCM) con chiavi derivate da un
 **codice di sincronizzazione** di 160 bit che il server non vede mai: sul server ci sono solo
 dati cifrati e identificativi opachi. Per ogni voce vince la modifica più recente; alla prima
-attivazione preferiti e recenti dei due dispositivi si uniscono.
+attivazione preferiti, recenti e personalizzazioni delle categorie dei due dispositivi si uniscono.
 
 Il server è un progetto [Supabase](https://supabase.com) (il piano gratuito basta):
 
@@ -456,7 +457,18 @@ PATH.
   ultimi canali visti e i canali preferiti con il programma in onda. La ricerca in alto cerca
   insieme film, serie e canali nei cataloghi completi (caricati dalla cache su disco). La Live
   TV resta lista dei canali con player, pannello info, catch-up e guida a griglia; con "Più
-  categorie…" (sotto Recenti) si guardano insieme i canali di più categorie, nell'ordine del provider.
+  categorie…" (sotto Recenti) si guardano insieme i canali di più categorie, nell'ordine delle categorie.
+- **Categorie e gruppi**: pagina a tutta finestra (menu dell'account › Categorie e gruppi, matita
+  accanto a "Cerca categoria" nella Live TV, "Modifica" nel menu "Categorie") con una scheda per
+  Live TV, Film e Serie. A sinistra le categorie del provider e i gruppi personali: si nascondono,
+  si rinominano e si riordinano (trascinando col mouse, con le frecce o "In cima"/"In fondo");
+  cercando o filtrando, "Nascondi tutte" / "Mostra tutte" agiscono su quelle trovate. A destra la
+  voce scelta: per una categoria i suoi elementi, da aggiungere al gruppo scelto con un clic; per
+  un gruppo la ricerca nel catalogo per aggiungere e l'elenco da riordinare o svuotare. Un singolo
+  film o serie va in un gruppo anche dalla scheda, il contenuto in riproduzione dal pannello sotto
+  il player. Le categorie nascoste spariscono da liste, righe e ricerca (preferiti e recenti
+  restano). I dati stanno in `xp.a.<id>.custom.<sezione>` e `xp.a.<id>.group.<sezione>.<gruppo>` e
+  si sincronizzano come i preferiti.
 - **Scheda e player a tutta finestra**: un clic su una locandina apre la scheda (sfondo, trama,
   cast, "Riproduci" o "Riprendi", "Ricomincia", La mia lista, titoli simili; per le serie
   stagioni ed episodi con avanzamento). Film ed episodi si guardano a tutta finestra: la freccia

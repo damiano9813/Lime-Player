@@ -52,6 +52,8 @@ function togglePlay() {
 }
 // Android: la WebView non ha l'API Fullscreen, il player copre la pagina (l'app è già a tutto schermo)
 function setFakeFullscreen(on) {
+  // lo stato attivo non resta su un elemento della pagina coperta (OK lo attiverebbe di nascosto)
+  if (on && document.activeElement && !wrap.contains(document.activeElement)) document.activeElement.blur();
   wrap.classList.toggle('fs-fake', on);
   document.dispatchEvent(new Event('fullscreenchange'));
 }
@@ -269,6 +271,8 @@ function renderSettings() {
     : '<span class="text-accent-ink font-bold">ffmpeg non trovato</span>: AC3/DTS/HEVC/MPEG-2, cambio traccia audio e sottotitoli non disponibili. ffmpeg è incluso nell\'installer: reinstalla l\'app, oppure installalo con <span class="font-mono">winget install Gyan.FFmpeg</span> e riavvia.';
 }
 function openSettings() {
+  // a schermo intero il pannello resterebbe coperto (sulla TV, invisibile ma attivo)
+  if (fsElement()) exitFullscreen();
   closeTracksMenu();
   settingsReturnFocus = document.activeElement;
   renderSettings();

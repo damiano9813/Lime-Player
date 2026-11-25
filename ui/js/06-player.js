@@ -393,9 +393,11 @@ function setSpinner(on) { $('player-spinner').classList.toggle('hidden', !on); }
 function setStatus(msg) { $('info-status').textContent = msg || ''; $('spinner-text').textContent = msg || ''; }
 
 // --- OSD: titolo in alto (schermo intero / cinema) e messaggi brevi al centro ---
-let osdTopTimer = null, osdCenterTimer = null;
+let osdTopTimer = null, osdCenterTimer = null, osdItem = null;
+// anche per il canale scelto con lo zapping, prima che parta (05-list.js)
 function showOsdTop(item, mode) {
   const el = $('osd-top');
+  osdItem = item;
   if (!item) { el.classList.remove('on', 'force'); return; }
   const logo = $('osd-logo');
   logo.textContent = initials(item.name);
@@ -403,11 +405,14 @@ function showOsdTop(item, mode) {
     const img = new Image();
     img.referrerPolicy = 'no-referrer';
     img.className = 'w-full h-full object-contain';
-    img.onload = () => { if (S.current === item) { logo.textContent = ''; logo.appendChild(img); } };
+    img.onload = () => { if (osdItem === item) { logo.textContent = ''; logo.appendChild(img); } };
     img.src = item.stream_icon;
   }
   $('osd-name').textContent = (mode === 'live' && item.num ? item.num + '  ·  ' : '') + item.name;
-  $('osd-sub').textContent = item._sub || S.catNames[mode].get(item.category_id) || (mode === 'live' ? 'Live TV' : 'Film');
+  // canali: anche il programma in onda, se la guida è già arrivata (righe della lista)
+  const cat = item._sub || S.catNames[mode].get(item.category_id) || (mode === 'live' ? 'Live TV' : 'Film');
+  const now = mode === 'live' && !item._catchup ? epgNowTitle(item.stream_id) : '';
+  $('osd-sub').textContent = now ? `${cat}  ·  ${now}` : cat;
   el.classList.add('on', 'force');
   clearTimeout(osdTopTimer);
   osdTopTimer = setTimeout(() => el.classList.remove('force'), 4000);
@@ -432,6 +437,7 @@ function showError(msg) {
 function hideError() { $('player-error').classList.add('hidden'); }
 
 function resetPlayerUi() {
+  cancelZap();
   S.current = null; S.currentMode = null; S.currentUrl = '';
   $('player-empty').classList.remove('hidden');
   hideError(); setSpinner(false); setHint(''); setStatus('');
@@ -439,7 +445,7 @@ function resetPlayerUi() {
   $('info-cat').textContent = ''; $('info-tech').textContent = ''; $('info-latency').textContent = '';
   $('info-type').classList.add('hidden');
   $('info-logo').innerHTML = '';
-  ['btn-external', 'btn-copy', 'btn-fav'].forEach((id) => { $(id).disabled = true; });
+  ['btn-external', 'btn-copy', 'btn-fav', 'btn-group'].forEach((id) => { $(id).disabled = true; });
   $('seek-row').classList.add('hidden'); $('live-badge').classList.add('hidden');
   ['btn-prev', 'btn-next', 'btn-back10', 'btn-fwd10', 'btn-tracks'].forEach((id) => $(id).classList.add('hidden'));
   closeTracksMenu();
@@ -477,7 +483,7 @@ function renderInfo(item, mode) {
   } else {
     logo.textContent = initials(item.name);
   }
-  ['btn-external', 'btn-copy', 'btn-fav'].forEach((id) => { $(id).disabled = false; });
+  ['btn-external', 'btn-copy', 'btn-fav', 'btn-group'].forEach((id) => { $(id).disabled = false; });
   $('seek-row').classList.toggle('hidden', mode === 'live');
   $('live-badge').classList.toggle('hidden', mode !== 'live');
   // canale precedente e successivo; negli episodi, quelli della serie
@@ -510,6 +516,7 @@ function updateFavButton() {
   b.innerHTML = `<span class="${fav ? 'text-accent' : ''}">${fav ? ICONS.star : ICONS.starO}</span>${fav ? 'Preferito' : 'Preferiti'}`;
   b.title = fav ? 'Rimuovi dai preferiti' : 'Aggiungi ai preferiti';
   b.setAttribute('aria-pressed', String(fav));
+  updateGroupButton();
 }
 
 function updateTech() {
@@ -536,6 +543,10 @@ function updateTech() {
 
 function playItem(item, mode, opts) {
   opts = opts || {};
+  // riavvii interni (lingua, conversione, nuovo tentativo) del canale che lo zapping sta per
+  // sostituire: inutili, e non devono annullare il cambio di canale
+  if (opts.keepRetries && ZAP.timer) return;
+  cancelZap();
   destroyPlayer(useMpv());
   hideError();
   setHint('');
@@ -557,6 +568,12 @@ function playItem(item, mode, opts) {
   const full = isFullItem(item, mode);
   mountPlayer(full);
   if (!full && S.view !== 'live') setView('live');
+  // prima lo stream (il motore comincia a collegarsi), poi pannello, recenti e lista: sul box
+  // questi costano decine di millisecondi che non devono ritardare l'avvio
+  setSpinner(true);
+  if (useMpv()) startMpv(item, mode, opts);
+  else if (mode === 'live') startLive(item, opts.fmt || S.liveFormat, opts.route);
+  else startVod(item, opts);
   renderInfo(item, mode);
   updateNowPill();
   if (!opts.keepRetries) {
@@ -567,10 +584,6 @@ function playItem(item, mode, opts) {
   }
   renderList(true);
   updateLocateButton();
-  setSpinner(true);
-  if (useMpv()) startMpv(item, mode, opts);
-  else if (mode === 'live') startLive(item, opts.fmt || S.liveFormat, opts.route);
-  else startVod(item, opts);
 }
 
 function mpegtsReady() { return !!(window.mpegts && mpegts.isSupported() && mpegts.getFeatureList().mseLivePlayback); }

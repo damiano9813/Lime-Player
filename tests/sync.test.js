@@ -68,6 +68,10 @@ test('chiavi sincronizzate', () => {
   assert.ok(X.isSyncedKey('xp.a.0a1b2c3d.resume.ep.55'));
   assert.ok(X.isSyncedKey('xp.a.0a1b2c3d.series.last.9'));
   assert.ok(X.isSyncedKey('xp.settings'));
+  assert.ok(X.isSyncedKey('xp.a.0a1b2c3d.custom.vod'));
+  assert.ok(X.isSyncedKey('xp.a.0a1b2c3d.group.live.0000000a'));
+  assert.equal(X.isSyncedKey('xp.a.0a1b2c3d.group.live.zz'), false);
+  assert.equal(X.isSyncedKey('xp.a.0a1b2c3d.custom.other'), false);
   assert.equal(X.isSyncedKey('xp.a.0a1b2c3d.cat.live'), false);
   assert.equal(X.isSyncedKey('xp.a.0a1b2c3d.route.4'), false);
   assert.equal(X.isSyncedKey('xp.volume'), false);
@@ -91,6 +95,24 @@ test('conflitti: vince la modifica più recente, la prima volta le liste si unis
   assert.equal(X.valueTime([1]), 0);
   assert.deepEqual(X.unionList([{ stream_id: 2 }, { stream_id: 1 }], [{ stream_id: 1 }, { stream_id: 3 }]).map((i) => i.stream_id), [2, 1, 3]);
   assert.deepEqual(X.unionList([{ stream_id: 1 }], [{ stream_id: 2 }, { stream_id: 3 }], 2).map((i) => i.stream_id), [1, 2]);
+});
+
+test('personalizzazioni: la prima volta si uniscono, poi vince la più recente', () => {
+  const k = 'xp.a.0a1b2c3d.custom.live';
+  assert.ok(X.isCustomKey(k));
+  assert.equal(X.isListKey(k), false);
+  assert.equal(X.resolve(k, { v: { hidden: ['1'] }, t: 0 }, { v: { hidden: [] }, t: 10 }), 'merge');
+  assert.equal(X.resolve(k, { v: { hidden: ['1'] }, t: 20 }, { v: { hidden: [] }, t: 10 }), 'keep');
+  assert.equal(X.resolve(k, { v: { hidden: ['1'] }, t: 0 }, { d: true, t: 10 }), 'take');
+  const remote = { hidden: ['1'], names: { 2: 'Notizie' }, order: ['2', '1'], groups: [{ id: 'u:0000000a', name: 'Sport' }] };
+  const local = { hidden: ['3', '1'], names: { 2: 'News', 4: 'Bimbi' }, order: ['1', '4'], groups: [{ id: 'u:0000000b', name: 'Film' }, { id: 'u:0000000a', name: 'Altro' }] };
+  assert.deepEqual(X.mergeCustom(remote, local), {
+    hidden: ['1', '3'], names: { 2: 'Notizie', 4: 'Bimbi' }, order: ['2', '1', '4'],
+    groups: [{ id: 'u:0000000a', name: 'Sport' }, { id: 'u:0000000b', name: 'Film' }],
+  });
+  assert.deepEqual(X.mergeCustom(null, 'x'), { hidden: [], names: {}, order: [], groups: [] });
+  assert.deepEqual(X.mergeValue(k, remote, null).hidden, ['1']);
+  assert.deepEqual(X.mergeValue('xp.a.0a1b2c3d.fav.live', [{ stream_id: 1 }], [{ stream_id: 2 }]).map((i) => i.stream_id), [1, 2]);
 });
 
 test('voce della playlist', () => {

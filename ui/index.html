@@ -133,9 +133,39 @@
   /* scelta delle categorie: caselle, categorie scelte nella griglia */
   .cp-box { width: 16px; height: 16px; flex-shrink: 0; display: grid; place-items: center; border: 1.5px solid var(--ink-subtle); border-radius: 4px; color: transparent; }
   .cp-box svg { width: 11px; height: 11px; }
-  #catpick-list .menu-opt { height: 32px; }
-  #catpick-list .menu-opt:focus-visible { background: var(--glass-hover); color: var(--ink); outline: none; }
-  #catpick-list .menu-opt.on .cp-box { background: var(--accent); border-color: var(--accent); color: #fff; }
+  #catpick-list .menu-opt, .gpick .menu-opt { height: 32px; }
+  #catpick-list .menu-opt:focus-visible, .gpick .menu-opt:focus-visible { background: var(--glass-hover); color: var(--ink); outline: none; }
+  #catpick-list .menu-opt.on .cp-box, .gpick .menu-opt.on .cp-box { background: var(--accent); border-color: var(--accent); color: #fff; }
+  /* pagina "Categorie e gruppi" (04b-custom.js) */
+  #custom-view:not(.hidden) { animation: fade-in .15s ease-out; }
+  .cv-tabs, .cv-seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--surface-200); border: 1px solid var(--line); }
+  .cv-tabs button { height: 32px; padding: 0 .9rem; border-radius: 7px; font-size: 13px; font-weight: 700; color: var(--ink-muted); }
+  .cv-seg { padding: 2px; border-radius: 8px; background: var(--surface-100); }
+  .cv-seg button { height: 26px; padding: 0 .6rem; border-radius: 6px; font-size: 12px; font-weight: 700; color: var(--ink-muted); }
+  .cv-tabs button:hover, .cv-seg button:hover { color: var(--ink); }
+  .cv-tabs button[aria-selected="true"], .cv-seg button[aria-pressed="true"] { background: var(--surface-400); color: var(--ink); }
+  .cv-row { display: flex; align-items: center; gap: 2px; min-height: 46px; padding: 0 4px; border-radius: 8px; }
+  .cv-row:hover, .cv-row:focus-within { background: var(--surface-300); }
+  .cv-row.is-sel { background: var(--accent-soft); }
+  .cv-row.is-hidden .cv-label { color: var(--ink-subtle); text-decoration: line-through; }
+  .cv-row.drop-before, .cv-item.drop-before { box-shadow: inset 0 2px 0 var(--accent); }
+  .cv-row.drop-after, .cv-item.drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
+  .cv-row.is-drag, .cv-item.is-drag { opacity: .4; }
+  .cv-grip { display: grid; place-items: center; width: 18px; flex-shrink: 0; color: var(--ink-subtle); cursor: grab; }
+  .cv-name { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; min-height: 40px; padding: 2px 6px; border-radius: 6px; text-align: left; }
+  .cv-label { display: flex; align-items: center; gap: .4rem; max-width: 100%; font-size: 14px; font-weight: 600; color: var(--ink); }
+  .cv-row.is-sel .cv-label { color: var(--accent-ink); font-weight: 700; }
+  .cv-name small { max-width: 100%; font-size: 11px; font-weight: 500; color: var(--ink-subtle); }
+  .cv-name:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .cv-count { min-width: 2.25rem; text-align: right; font-size: 11px; font-weight: 600; color: var(--ink-subtle); font-variant-numeric: tabular-nums; padding-right: 4px; }
+  .cv-ibtn { display: grid; place-items: center; width: 32px; height: 32px; flex-shrink: 0; border-radius: 6px; color: var(--ink-subtle); }
+  .cv-ibtn:hover, .cv-ibtn:focus-visible { background: var(--glass-hover); color: var(--ink); outline: none; }
+  .cv-ibtn:disabled { opacity: .3; pointer-events: none; }
+  .cv-ibtn svg { width: 16px; height: 16px; }
+  .cv-item { display: flex; align-items: center; gap: .75rem; min-height: 54px; padding: 4px 8px; border-radius: 8px; }
+  .cv-item:hover, .cv-item:focus-within { background: var(--surface-200); }
+  .cv-sec { padding: 1rem 8px .4rem; font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-subtle); }
+  html:not(.mobile) .cv-back { display: none; }
   .cat-chip { display: inline-flex; align-items: center; gap: .35rem; max-width: 20rem; height: 30px; padding: 0 .3rem 0 .8rem; border-radius: 9999px; background: var(--surface-300); border: 1px solid var(--line); font-size: 13px; font-weight: 600; color: var(--ink); }
   .cat-chip button { display: grid; place-items: center; width: 22px; height: 22px; flex-shrink: 0; border-radius: 9999px; color: var(--ink-muted); }
   .cat-chip button:hover { background: var(--glass-hover); color: var(--ink); }
@@ -150,6 +180,8 @@
   .row-all { font-size: 13px; font-weight: 700; color: var(--info); opacity: .85; white-space: nowrap; }
   .row-all:hover { opacity: 1; text-decoration: underline; }
   .row-wrap { position: relative; }
+  /* elemento raggiunto con le frecce: mai sotto la barra in alto né attaccato al bordo */
+  #browse-scroller { scroll-padding: 88px 0 32px; }
   .row-track { display: grid; grid-auto-flow: column; grid-auto-columns: var(--card-w); gap: .55rem; overflow-x: auto; overflow-y: hidden; padding: .7rem var(--gutter) 1rem; scroll-padding-inline: var(--gutter); scroll-snap-type: x mandatory; scrollbar-width: none; overscroll-behavior-x: contain; }
   .row-track::-webkit-scrollbar { display: none; }
   .row-track.wide { grid-auto-columns: var(--wide-w); }
@@ -222,11 +254,16 @@
   .vrow:hover .fav-btn, .vrow .fav-btn.is-fav, .vrow .fav-btn:focus-visible { opacity: 1; }
   mark.hl { background: var(--accent-soft); color: var(--accent-ink); border-radius: 2px; }
   .eq { display: inline-flex; align-items: flex-end; gap: 2px; height: 12px; }
-  .eq i { width: 3px; height: 3px; background: var(--accent); border-radius: 1px; animation: eq 1s ease-in-out infinite; }
+  /* l'altezza delle barre cambia con transform: animando height il box ricalcolerebbe il layout a ogni frame */
+  .eq i { width: 3px; height: 12px; background: var(--accent); border-radius: 1px; transform: scaleY(.25); transform-origin: bottom; animation: eq 1s ease-in-out infinite; }
   .eq i:nth-child(2) { animation-delay: -.4s; }
   .eq i:nth-child(3) { animation-delay: -.7s; }
   .eq.paused i { animation-play-state: paused; }
-  @keyframes eq { 0%, 100% { height: 3px; } 50% { height: 12px; } }
+  @keyframes eq { 0%, 100% { transform: scaleY(.25); } 50% { transform: scaleY(1); } }
+  /* centinaia di categorie: quelle fuori vista non si impaginano (sul box il testo costa) */
+  html:not(.mobile) #cat-list > button { content-visibility: auto; contain-intrinsic-size: auto 36px; }
+  /* canale scelto con lo zapping, in attesa di partire (05-list.js) */
+  .vrow.row-zap { background: var(--surface-300); box-shadow: inset 0 0 0 2px var(--line-strong); }
   .kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 1.5rem; height: 1.5rem; padding: 0 .4rem; border-radius: 6px; border: 1px solid var(--line-strong); border-bottom-width: 2px; background: var(--surface-200); color: var(--ink); font-family: inherit; font-size: 11px; font-weight: 700; line-height: 1; }
   .menu-opt { width: 100%; height: 34px; display: flex; align-items: center; gap: .5rem; padding: 0 .5rem; border-radius: 8px; color: var(--ink-muted); text-align: left; font-weight: 500; }
   .menu-opt:hover { background: var(--glass-hover); color: var(--ink); }
@@ -268,8 +305,14 @@
   #player-wrap.mpv-on #video { visibility: hidden; }
   #player-wrap.mpv-on::backdrop { background: transparent; }
   /* schermo intero con mpv: si vede solo il player, come con il motore del browser */
-  html.mpv-full body *:not(#player-wrap, #player-wrap *) { visibility: hidden; }
-  html.mpv-full #player-wrap { visibility: visible; }
+  /* desktop: anche Tab non raggiunge la pagina coperta. Classe a parte: già solo la presenza di
+     questa regola fa ricalcolare al browser lo stile di tutta la pagina quando cambia la classe */
+  html.mpv-cover body *:not(#player-wrap, #player-wrap *) { visibility: hidden; }
+  html.mpv-cover #player-wrap { visibility: visible; }
+  /* Android: solo i fratelli degli antenati del player (06b-mpv.js), sul box 300 ms in meno */
+  html.mpv-full .mpv-hide { opacity: 0 !important; }
+  /* sopra il player a schermo intero (z 80) */
+  #toast { z-index: 90; }
 
   /* ---------------------------------------------------------------- telefono in verticale
      html.mobile (09e-tv.js): pagina larga quanto lo schermo, sezioni in una barra in basso,
@@ -292,6 +335,11 @@
   html.mobile #acct-menu { position: fixed; top: 56px; left: 8px; right: 8px; width: auto; }
   html.mobile #toast { bottom: calc(var(--tabbar) + 12px); max-width: calc(100vw - 24px); }
   html.mobile #catpick { left: 8px !important; right: 8px; width: auto; }
+  /* pagina "Categorie e gruppi" sul telefono: elenco e voce aperta uno alla volta */
+  html.mobile #cv-side { width: 100%; border-right: 0; }
+  html.mobile #custom-view.cv-pane-open #cv-side, html.mobile #custom-view:not(.cv-pane-open) #cv-main { display: none; }
+  html.mobile #cv-tabs { margin-left: 0; width: 100%; }
+  html.mobile #cv-tabs button { flex: 1; }
   /* Live TV */
   html.mobile #live-view { flex-direction: column; }
   html.mobile #live-view > main { order: -1; flex: none; }
@@ -341,9 +389,20 @@
   html.mobile #modal-actions .btn { flex: 1 1 auto; }
   /* Android: niente Picture in Picture né scorciatoie da tastiera nel menu */
   html.android #btn-pip, html.android .desktop-only { display: none !important; }
+  /* Android: il volume è quello del telecomando o del telefono; la barra col telecomando intrappolava ←/→ */
+  html.android #volume { display: none !important; }
   html:not(.android) .android-only { display: none !important; }
   /* Android TV: lo stato attivo del telecomando si vede bene da lontano */
   html.tv :focus-visible:not(.pcard-btn) { outline: 3px solid var(--focus-ring) !important; outline-offset: 3px; }
+  /* TV: locandina scelta solo ingrandita (l'ombra animata costa molto ai box), niente sfocature
+     dietro menu e finestre, "Vedi tutti" come ultima scheda della riga */
+  html.tv .pcard-img { transition: transform .15s ease-out; }
+  html.tv .pcard-btn:focus-visible .pcard-img { box-shadow: none; }
+  html.tv .pcard-play { transition: none; }
+  html.tv .glass { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--surface-200); }
+  html.tv .backdrop-blur-sm { -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .pcard-more { font-size: 15px; font-weight: 800; color: var(--ink-muted); border: 1px dashed var(--line-strong); }
+  .pcard-btn:focus-visible .pcard-more { color: var(--ink); }
   html.tv #player-wrap:focus-visible, html.tv #list-scroller:focus-visible, html.tv #browse-scroller:focus-visible { outline: none !important; }
   html.tv .vrow:focus { background: var(--surface-300); outline: none !important; box-shadow: inset 0 0 0 2px var(--focus-ring); }
   html.tv .vrow:focus .fav-btn { opacity: 1; }
@@ -483,6 +542,10 @@
             Aggiorna liste
           </button>
         </div>
+        <button id="acct-custom" class="btn btn-secondary btn-sm w-full mb-2" title="Nascondi, rinomina e riordina le categorie; gruppi personali">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+          Categorie e gruppi
+        </button>
         <button id="logout-btn" class="btn btn-secondary btn-sm w-full">
           <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
           Gestisci playlist
@@ -498,8 +561,9 @@
       <input id="catpick-search" type="text" placeholder="Cerca categoria…" spellcheck="false" autocomplete="off" aria-label="Cerca categoria" class="field field-sm !pl-9">
     </div>
     <div id="catpick-list" class="max-h-[min(22rem,55vh)] overflow-y-auto space-y-0.5" role="listbox" aria-multiselectable="true" aria-label="Categorie"></div>
-    <div class="flex items-center gap-2 mt-2 pt-2 border-t border-line">
+    <div id="catpick-foot" class="flex items-center gap-2 mt-2 pt-2 border-t border-line">
       <span id="catpick-count" class="flex-1 min-w-0 truncate text-xs text-ink-subtle"></span>
+      <button id="catpick-edit" type="button" class="btn btn-ghost btn-sm !px-2" title="Categorie e gruppi: nascondi, rinomina, riordina, gruppi personali">Modifica</button>
       <button id="catpick-clear" type="button" class="btn btn-secondary btn-sm">Deseleziona</button>
       <button id="catpick-show" type="button" class="btn btn-primary btn-sm">Mostra</button>
     </div>
@@ -511,7 +575,10 @@
       <div class="p-3">
         <div class="relative">
           <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-ink-subtle pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-          <input id="cat-search" type="text" placeholder="Cerca categoria…" spellcheck="false" aria-label="Cerca categoria" class="field field-sm !pl-9">
+          <input id="cat-search" type="text" placeholder="Cerca categoria…" spellcheck="false" aria-label="Cerca categoria" class="field field-sm !pl-9 !pr-10">
+          <button id="cat-edit" type="button" class="absolute right-1 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-ink-subtle hover:text-ink hover:bg-s3" aria-pressed="false" title="Categorie e gruppi: nascondi, rinomina, riordina, gruppi personali" aria-label="Personalizza categorie e gruppi">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+          </button>
         </div>
       </div>
       <nav id="cat-list" class="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5 min-h-0" aria-label="Categorie"></nav>
@@ -692,6 +759,7 @@
                 <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                 URL
               </button>
+              <button id="btn-group" disabled class="btn btn-secondary !px-3 !gap-1.5 col-span-2"></button>
             </div>
           </div>
         </div>
@@ -768,6 +836,59 @@
 </div>
 
 <!-- Impostazioni: buffer e modalità live, audio, qualità, lingue, player esterno, cache, ffmpeg -->
+<!-- Categorie e gruppi della playlist aperta: nascoste, nomi, ordine, gruppi personali (04b-custom.js) -->
+<div id="custom-view" class="hidden fixed inset-0 z-[36] bg-s1 flex flex-col" role="dialog" aria-modal="true" aria-labelledby="cv-title">
+  <header class="flex flex-wrap items-center gap-x-5 gap-y-3 px-[var(--gutter)] py-4 border-b border-line">
+    <button type="button" class="round-btn !w-10 !h-10" data-cv="close" title="Chiudi (Esc)" aria-label="Chiudi">
+      <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <div class="min-w-0 flex-1">
+      <h1 id="cv-title" class="text-2xl font-extrabold tracking-tight">Categorie e gruppi</h1>
+      <p id="cv-sub" class="text-xs text-ink-subtle truncate"></p>
+    </div>
+    <div id="cv-tabs" class="cv-tabs ml-auto" role="tablist" aria-label="Sezione">
+      <button type="button" role="tab" data-cv-mode="live">Live TV</button>
+      <button type="button" role="tab" data-cv-mode="vod">Film</button>
+      <button type="button" role="tab" data-cv-mode="series">Serie TV</button>
+    </div>
+  </header>
+  <div class="flex-1 min-h-0 flex">
+    <section id="cv-side" class="w-[26rem] shrink-0 border-r border-line bg-s2 flex flex-col min-h-0" aria-label="Categorie e gruppi">
+      <div class="p-3 space-y-2 border-b border-line">
+        <div class="relative">
+          <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-ink-subtle pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="cv-search" type="text" placeholder="Cerca categoria o gruppo…" spellcheck="false" autocomplete="off" aria-label="Cerca categoria o gruppo" class="field field-sm !pl-9">
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="cv-seg" role="group" aria-label="Mostra">
+            <button type="button" data-cv-show="all">Tutte</button>
+            <button type="button" data-cv-show="hidden">Nascoste</button>
+            <button type="button" data-cv-show="groups">Gruppi</button>
+          </div>
+          <button type="button" class="btn btn-secondary btn-sm ml-auto" data-cv="new" title="Nuovo gruppo personale">+ Gruppo</button>
+        </div>
+        <div id="cv-bulk" class="hidden flex items-center gap-1.5 text-xs"></div>
+      </div>
+      <div id="cv-list" class="flex-1 min-h-0 overflow-y-auto p-2"></div>
+      <div class="px-3 py-2 border-t border-line flex items-center gap-2">
+        <span id="cv-stats" class="flex-1 min-w-0 truncate text-[11px] text-ink-subtle"></span>
+        <button type="button" class="btn btn-ghost btn-sm" data-cv="reset" title="Tutte le categorie con nomi e ordine del provider (i gruppi restano)">Ripristina</button>
+      </div>
+    </section>
+    <section id="cv-main" class="flex-1 min-w-0 flex flex-col min-h-0">
+      <div id="cv-head" class="px-6 pt-5 pb-3"></div>
+      <div id="cv-tools" class="hidden px-6 pb-3 flex flex-wrap items-center gap-2">
+        <div class="relative flex-1 min-w-[14rem] max-w-xl">
+          <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-ink-subtle pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="cv-q" type="text" spellcheck="false" autocomplete="off" aria-label="Cerca" class="field field-sm !pl-9">
+        </div>
+        <span id="cv-target" class="flex items-center gap-2"></span>
+      </div>
+      <div id="cv-items" class="flex-1 min-h-0 overflow-y-auto px-4 pb-6 border-t border-line"></div>
+    </section>
+  </div>
+</div>
+
 <div id="settings-panel" class="hidden fixed inset-0 z-40 bg-scrim backdrop-blur-sm flex items-center justify-center p-6" role="dialog" aria-modal="true" aria-labelledby="settings-title">
   <div class="modal-card w-full max-w-xl max-h-full flex flex-col bg-s2 border border-line rounded-2xl shadow-pop">
     <div class="flex items-center gap-2 px-5 pt-4 pb-3 border-b border-line">
@@ -868,6 +989,7 @@
 <script src="js/02-state.js"></script>
 <script src="js/03-login.js"></script>
 <script src="js/04-library.js"></script>
+<script src="js/04b-custom.js"></script>
 <script src="js/05-list.js"></script>
 <script src="js/06-player.js"></script>
 <script src="js/06b-mpv.js"></script>

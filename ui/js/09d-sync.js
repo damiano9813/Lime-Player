@@ -2,9 +2,10 @@
 // Logica e crittografia in sync-core.js (XPSync); server in supabase/schema.sql.
 //
 // Si sincronizzano le playlist (con la password), e per ogni playlist preferiti, recenti,
-// posizioni di ripresa e ultimo episodio delle serie, più le lingue preferite. Ogni voce porta
-// la data dell'ultima modifica: vince la più recente. Le modifiche locali passano da lsSet/lsDel
-// (01-base.js), che avvisano questo modulo con onStoreWrite.
+// posizioni di ripresa, ultimo episodio delle serie, categorie personalizzate e gruppi personali
+// (04b-custom.js), più le lingue preferite. Ogni voce porta la data dell'ultima modifica: vince la
+// più recente. Le modifiche locali passano da lsSet/lsDel (01-base.js), che avvisano questo modulo
+// con onStoreWrite.
 'use strict';
 
 const SYNC_SERVER = window.XP_SYNC_SERVER || {};
@@ -144,7 +145,7 @@ async function pull() {
           changed.add(k);
         } else if (action === 'merge') {
           const max = /\.recent\./.test(k) ? RECENT_MAX : 0;
-          lsSet(k, XPSync.unionList(item.v, localV, max));
+          lsSet(k, XPSync.mergeValue(k, item.v, localV, max));
           meta[k] = dirty[k] = Date.now();
           changed.add(k);
         } else if (localT > (Number(item.t) || 0)) {
@@ -238,7 +239,16 @@ function onSyncApplied(keys) {
   if (![...keys].some((k) => k.startsWith(prefix))) return;
   S.favorites = perMode((m) => lsGet(ak('fav.' + m), []));
   S.recent = perMode((m) => lsGet(ak('recent.' + m), []));
+  // categorie personalizzate e gruppi: si ricalcolano le sezioni toccate
+  const custom = new Set();
+  for (const k of keys) {
+    const m = k.startsWith(prefix) && /^(?:custom|group)\.(live|vod|series)\b/.exec(k.slice(prefix.length));
+    if (m) custom.add(m[1]);
+  }
+  if (custom.size) { reloadCustom(); custom.forEach((m) => onCustomChanged(m)); }
   if (S.liveReady && !browseVisible()) { renderCategories(); renderList(true); }
+  // Live TV nascosta: almeno i contatori (la scelta di una categoria non ridisegna più l'elenco)
+  else { setCatCount(FAV, S.favorites[S.mode].length); setCatCount(RECENT, S.recent[S.mode].length); }
   updateFavButton();
   onFavChanged();
 }
@@ -374,7 +384,7 @@ async function sendPairing() {
 // ------------------------------------------------------------------ impostazioni
 async function startSyncFlow() {
   const choice = await openModal('Attiva la sincronizzazione',
-    `<p>Playlist (con le password), preferiti, recenti e punti di ripresa vengono cifrati su questo dispositivo e condivisi solo con quelli che hanno il tuo codice.</p>`,
+    `<p>Playlist (con le password), preferiti, recenti, punti di ripresa e categorie personalizzate vengono cifrati su questo dispositivo e condivisi solo con quelli che hanno il tuo codice.</p>`,
     [{ label: 'Annulla', value: false }, { label: 'Ho già un codice', value: 'code' },
       { label: 'Ricevi da un altro dispositivo', value: 'pair' }, { label: 'Nuovo gruppo', value: 'new', primary: true }]);
   if (choice === 'pair') { receivePairing(); return; }

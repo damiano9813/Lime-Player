@@ -155,8 +155,15 @@ function renderGuideRows(force) {
   G.rows = [];
   let html = '';
   for (let i = start; i < end; i++) html += guideRowHtml(S.filtered[i], i, d, now, w, span);
-  gRows.innerHTML = html;
+  keepFocus(gRows, guideFocusKeys, () => { gRows.innerHTML = html; });
   requestGuideData();
+}
+// col telecomando, dopo un ridisegno (dati arrivati, ora che passa, scorrimento): lo stesso
+// programma (riga e orario d'inizio) oppure il canale della riga
+function guideFocusKeys(a) {
+  const i = a.dataset.gr != null ? a.dataset.gr : a.dataset.gch;
+  if (i == null) return null;
+  return [a.dataset.ts ? `[data-gr="${i}"][data-ts="${a.dataset.ts}"]` : '', `[data-gch="${i}"]`];
 }
 const rerenderGuide = debounce(() => renderGuideRows(true), 80);
 
@@ -182,13 +189,16 @@ function guideRowHtml(ch, i, d, now, w, span) {
     const title = e.title || 'Senza titolo';
     const time = `${fmtClock(e.start_ts)} – ${fmtClock(e.end_ts)}`;
     const hint = st === 'live' ? 'In onda: clic per guardare' : st === 'archive' ? 'Clic per rivedere (catch-up)' : '';
-    const tip = [title, time, hint, e.description].filter(Boolean).join('\n');
+    // descrizione al passaggio del mouse: sulla TV non serve e allungherebbe ogni ridisegno
+    const tip = PLATFORM.tv ? '' : ` title="${escapeHtml([title, time, hint, e.description].filter(Boolean).join('\n'))}"`;
     const text = b.w >= 30 ? `<span class="block text-xs font-bold truncate ${st === 'archive' && b.w > 70 ? 'pr-4' : ''}">${escapeHtml(title)}</span><span class="block text-[11px] font-medium tabular-nums truncate opacity-75">${time}</span>` : '';
     const icon = st === 'archive' && b.w > 70 ? `<span class="gp-icon">${ICONS.rewind}</span>` : '';
     const bar = st === 'live' ? `<span class="gp-bar" style="width:${XPCore.epgProgress(e, now) * 100}%"></span>` : '';
-    const attrs = click ? `type="button" data-gr="${i}" data-gp="${j}"` : '';
+    // TV: con le frecce si scorrono anche i programmi passati e futuri (OK dice quando vanno in onda)
+    const ref = `data-gr="${i}" data-gp="${j}" data-ts="${e.start_ts}"`;
+    const attrs = click ? `type="button" ${ref}` : PLATFORM.tv ? `tabindex="0" ${ref}` : '';
     const tag = click ? 'button' : 'div';
-    progs += `<${tag} ${attrs} class="gp gp-${st}${on ? ' playing' : ''}" style="left:${b.x}px;width:${Math.max(2, b.w - 2)}px" title="${escapeHtml(tip)}">${text}${icon}${bar}</${tag}>`;
+    progs += `<${tag} ${attrs} class="gp gp-${st}${on ? ' playing' : ''}" style="left:${b.x}px;width:${Math.max(2, b.w - 2)}px"${tip}>${text}${icon}${bar}</${tag}>`;
   });
   if (!blocks.length) {
     const msg = !entries ? 'Caricamento della guida…' : 'Nessun programma nella guida per questo giorno';
@@ -197,7 +207,7 @@ function guideRowHtml(ch, i, d, now, w, span) {
   const icon = ch.stream_icon && /^https?:\/\//i.test(ch.stream_icon)
     ? `<img src="${escapeHtml(ch.stream_icon)}" loading="lazy" decoding="async" referrerpolicy="no-referrer" class="w-full h-full object-contain" alt=""><span class="hidden">${escapeHtml(initials(ch.name))}</span>`
     : `<span>${escapeHtml(initials(ch.name))}</span>`;
-  const lead = playing ? ICONS.eq.replace('class="eq"', `class="eq${video.paused ? ' paused' : ''}"`) : escapeHtml(ch.num || i + 1);
+  const lead = playing ? ICONS.eq.replace('class="eq"', `class="eq${isPaused() ? ' paused' : ''}"`) : escapeHtml(ch.num || i + 1);
   const archive = String(ch.tv_archive) === '1' ? `<span class="shrink-0 text-ink-subtle" title="Catch-up: programmi passati disponibili">${ICONS.rewind}</span>` : '';
   return `<div class="grow absolute left-0 flex" style="top:${GUIDE_HEAD_H + i * GUIDE_ROW_H}px;height:${GUIDE_ROW_H}px;width:${guideChW() + w}px">
     <div data-gch="${i}"${PLATFORM.tv ? ' tabindex="0"' : ''} class="gch ${playing ? 'on' : ''} sticky left-0 z-10 shrink-0 flex items-center gap-2.5 pl-2 pr-3 cursor-pointer" style="width:${guideChW()}px" title="${escapeHtml(ch.name)}: clic per guardare">
@@ -336,6 +346,11 @@ function watchGuideChannel(ch) {
 async function activateGuideProgram(ch, e) {
   const st = XPCore.programState(e, nowSec(), ch);
   if (st === 'live') { watchGuideChannel(ch); return; }
+  if (st === 'future' || st === 'past') {
+    const when = `${dayLabel(e.start_ts).toLowerCase()} alle ${fmtClock(e.start_ts)}`;
+    toast(`“${e.title || 'Senza titolo'}”: ${st === 'future' ? 'in onda ' + when : 'andato in onda ' + when + ', non disponibile in archivio'}`);
+    return;
+  }
   if (st !== 'archive' || G.busy) return;
   G.busy = true;
   try {

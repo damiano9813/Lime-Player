@@ -39,6 +39,8 @@ function syncMpvRect() {
     // a schermo intero il player è trasparente: il resto della pagina, che il browser lascia
     // sotto, traspare sopra il video se non lo si nasconde
     document.documentElement.classList.toggle('mpv-full', show && full);
+    if (PLATFORM.android) hidePageUnderPlayer(show && full);
+    else document.documentElement.classList.toggle('mpv-cover', show && full);
     playerWrap.classList.toggle('mpv-on', show);
     if (!show) { invoke('mpv_set_rect', { x: 0, y: 0, w: 0, h: 0, visible: false }).catch(() => {}); return; }
     const r = playerWrap.getBoundingClientRect();
@@ -48,6 +50,21 @@ function syncMpvRect() {
     const k = window.devicePixelRatio || 1;
     invoke('mpv_set_rect', { x: r.left * k, y: r.top * k, w: r.width * k, h: r.height * k, visible: true }).catch(() => {});
   });
+}
+// Android: la pagina sotto il video si nasconde con opacity sui fratelli degli antenati del
+// player (una trentina di elementi). Con visibility, ereditata, il box ricalcolava lo stile di
+// migliaia di nodi: 300-400 ms a ogni ingresso e uscita dallo schermo intero.
+let pageHiddenFor = null;
+function hidePageUnderPlayer(on) {
+  const at = on ? playerWrap.parentElement : null;
+  if (at === pageHiddenFor) return;
+  pageHiddenFor = at;
+  document.querySelectorAll('.mpv-hide').forEach((el) => el.classList.remove('mpv-hide'));
+  if (!on) return;
+  for (let el = playerWrap; el.parentElement && el !== document.body; el = el.parentElement) {
+    // gli avvisi restano sopra il video (es. numero di canale inesistente)
+    for (const sib of el.parentElement.children) if (sib !== el && sib !== backdrop && sib.id !== 'toast') sib.classList.add('mpv-hide');
+  }
 }
 new ResizeObserver(syncMpvRect).observe(playerWrap);
 window.addEventListener('resize', syncMpvRect);

@@ -521,21 +521,92 @@
     dated.sort((a, b) => b[0] - a[0]);
     return dated.slice(0, max).map((x) => x[1]);
   }
-  // una riga per categoria, nell'ordine del provider; le categorie vuote non compaiono
-  function groupByCategory(items, cats) {
+  // una riga per categoria, nell'ordine di `cats`; le categorie vuote non compaiono. I gruppi
+  // personali (id "u:…") prendono gli elementi dalla loro lista in `groupItems` (Map id -> elementi)
+  function groupByCategory(items, cats, groupItems) {
     const by = new Map();
     for (const it of items || []) {
       const k = String(it.category_id);
       if (!by.has(k)) by.set(k, []);
       by.get(k).push(it);
     }
-    return (cats || []).map((c) => ({ id: c.category_id, name: c.category_name, items: by.get(String(c.category_id)) || [] }))
+    const listOf = (id) => (isGroupId(id) ? (groupItems && groupItems.get(String(id))) || [] : by.get(String(id)) || []);
+    return (cats || []).map((c) => ({ id: c.category_id, name: c.category_name, group: isGroupId(c.category_id), items: listOf(c.category_id) }))
       .filter((g) => g.items.length);
   }
-  // elementi delle categorie `ids` (più categorie insieme), nell'ordine delle categorie del provider
-  function itemsInCategories(items, cats, ids) {
+  // elementi delle categorie `ids` (più categorie insieme), nell'ordine di `cats`, senza doppioni
+  function itemsInCategories(items, cats, ids, groupItems) {
     const want = new Set((ids || []).map(String));
-    return groupByCategory(items, cats).filter((g) => want.has(String(g.id))).flatMap((g) => g.items);
+    const out = [], seen = new Set();
+    for (const g of groupByCategory(items, cats, groupItems)) {
+      if (!want.has(String(g.id))) continue;
+      for (const it of g.items) {
+        const k = String(it.stream_id);
+        if (!seen.has(k)) { seen.add(k); out.push(it); }
+      }
+    }
+    return out;
+  }
+
+  // ------------------------------------------------------------------ categorie personalizzate
+  // Per playlist e sezione: { hidden: [id], names: { id: nome }, order: [id], groups: [{ id, name }] }.
+  // Gli id dei gruppi personali hanno il prefisso "u:" e non si confondono con quelli del provider.
+  const isGroupId = (id) => /^u:[0-9a-f]{8}$/.test(String(id));
+  function normalizeCustom(v) {
+    const o = v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+    const ids = (a) => Array.from(new Set((Array.isArray(a) ? a : []).filter((x) => x != null && x !== '').map(String)));
+    const names = {};
+    if (o.names && typeof o.names === 'object') {
+      for (const [k, n] of Object.entries(o.names)) if (typeof n === 'string' && n.trim()) names[k] = n.trim();
+    }
+    const seen = new Set(), groups = [];
+    for (const g of Array.isArray(o.groups) ? o.groups : []) {
+      if (!g || !isGroupId(g.id) || seen.has(g.id)) continue;
+      seen.add(g.id);
+      groups.push({ id: g.id, name: String(g.name || '').trim() || 'Gruppo' });
+    }
+    return { hidden: ids(o.hidden), names, order: ids(o.order), groups };
+  }
+  const isEmptyCustom = (c) => !c.hidden.length && !Object.keys(c.names).length && !c.order.length && !c.groups.length;
+  // tutte le voci (categorie del provider e gruppi), nascoste comprese: prima quelle nell'ordine
+  // scelto, poi le altre (categorie nuove del provider, gruppi appena creati) nel loro ordine
+  function editableCategories(raw, custom) {
+    const c = normalizeCustom(custom);
+    const hidden = new Set(c.hidden);
+    const all = (raw || []).map((x) => {
+      const id = String(x.category_id);
+      return { ...x, category_id: id, category_name: c.names[id] || x.category_name, original: x.category_name };
+    }).concat(c.groups.map((g) => ({ category_id: g.id, category_name: g.name, group: true })));
+    const pos = new Map(c.order.map((id, i) => [id, i]));
+    return all.map((e, i) => [pos.has(e.category_id) ? pos.get(e.category_id) : c.order.length + i, e])
+      .sort((a, b) => a[0] - b[0])
+      .map(([, e]) => ({ ...e, hidden: hidden.has(e.category_id) }));
+  }
+  // le voci da mostrare: senza le nascoste
+  const customCategories = (raw, custom) => editableCategories(raw, custom).filter((e) => !e.hidden)
+    .map(({ hidden, original, ...e }) => e);
+  // nuovo ordine dopo aver spostato `id` di `delta` posti tra le voci `ids` (nell'ordine attuale)
+  function moveId(ids, id, delta) {
+    const order = (ids || []).map(String);
+    const i = order.indexOf(String(id)), j = i + delta;
+    if (i === -1 || j < 0 || j >= order.length) return order;
+    [order[i], order[j]] = [order[j], order[i]];
+    return order;
+  }
+  // nuovo ordine dopo aver trascinato `id` prima (o dopo, con `after`) della voce `target`
+  function moveIdTo(ids, id, target, after) {
+    const order = (ids || []).map(String).filter((x) => x !== String(id));
+    if (order.length === (ids || []).length || String(id) === String(target)) return (ids || []).map(String);
+    const j = order.indexOf(String(target));
+    if (j === -1) return (ids || []).map(String);
+    order.splice(after ? j + 1 : j, 0, String(id));
+    return order;
+  }
+  // elementi senza quelli delle categorie nascoste (stessa lista se non ce ne sono)
+  function withoutHidden(items, custom) {
+    const hidden = new Set(normalizeCustom(custom).hidden);
+    if (!hidden.size) return items;
+    return (items || []).filter((it) => !hidden.has(String(it.category_id)));
   }
   // aggiornamento automatico delle liste: dovuto se l'ultimo risale ad almeno `everyMs` fa, se non
   // c'è o se è nel futuro (orologio spostato indietro)
@@ -578,6 +649,7 @@
   return {
     publicCreds, accountId, accountKey, legacyKeyMoves, resumeSeconds, resumeProgress, migratedValue, prunableKind, staleEntries,
     continueFilms, seriesLast, continueSeries, recentlyAdded, groupByCategory, itemsInCategories, refreshDue, searchItems,
+    isGroupId, normalizeCustom, isEmptyCustom, editableCategories, customCategories, moveId, moveIdTo, withoutHidden,
     escapeHtml, normKey, initials, fmtTime, debounce, highlight,
     buildStreamUrl, proxyUrl, transcodeUrl, subtitleUrl, timeshiftStart, timeshiftUrl,
     normLang, langName, codecName, channelsLabel, trackLabel, pickTrack, audioCopyOk, audioTrackRoute, PREFERRED_LANGS,

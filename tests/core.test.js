@@ -625,6 +625,50 @@ test('catalogo: aggiunti di recente, righe per categoria, ricerca', () => {
   assert.deepEqual(X.searchItems(items, '   ', 5), { items: [], total: 0 });
 });
 
+test('categorie personalizzate: nascoste, nomi, ordine, gruppi', () => {
+  const raw = [{ category_id: '1', category_name: 'Sport' }, { category_id: '2', category_name: 'News' }, { category_id: '3', category_name: 'Kids' }];
+  // valore mancante o rovinato: nessuna personalizzazione
+  assert.deepEqual(X.normalizeCustom(null), { hidden: [], names: {}, order: [], groups: [] });
+  assert.equal(X.isEmptyCustom(X.normalizeCustom('x')), true);
+  const bad = X.normalizeCustom({ hidden: ['1', '1', null, 2], names: { 1: '  ', 2: ' Notizie ' }, groups: [{ id: 'u:zz' }, { id: 'u:0000000a', name: '' }, { id: 'u:0000000a', name: 'Doppio' }] });
+  assert.deepEqual(bad, { hidden: ['1', '2'], names: { 2: 'Notizie' }, order: [], groups: [{ id: 'u:0000000a', name: 'Gruppo' }] });
+  assert.equal(X.isGroupId('u:0000000a'), true);
+  assert.equal(X.isGroupId('12'), false);
+  // senza personalizzazioni: come il provider
+  assert.deepEqual(X.customCategories(raw, null).map((c) => c.category_id), ['1', '2', '3']);
+  const custom = { hidden: ['2'], names: { 3: 'Bambini' }, order: ['3', 'u:0000000a', '1'], groups: [{ id: 'u:0000000a', name: 'Preferiti di casa' }, { id: 'u:0000000b', name: 'Nuovo' }] };
+  const edit = X.editableCategories(raw, custom);
+  // prima l'ordine scelto, poi le voci non ordinate (categoria 2 del provider, gruppo appena creato)
+  assert.deepEqual(edit.map((c) => [c.category_id, c.category_name, !!c.hidden, !!c.group]),
+    [['3', 'Bambini', false, false], ['u:0000000a', 'Preferiti di casa', false, true], ['1', 'Sport', false, false],
+      ['2', 'News', true, false], ['u:0000000b', 'Nuovo', false, true]]);
+  assert.equal(edit[0].original, 'Kids');
+  const vis = X.customCategories(raw, custom);
+  assert.deepEqual(vis.map((c) => c.category_id), ['3', 'u:0000000a', '1', 'u:0000000b']);
+  assert.equal('hidden' in vis[0] || 'original' in vis[0], false);
+  // spostamenti: scambio con la voce vicina, niente oltre i bordi
+  const ids = edit.map((c) => c.category_id);
+  assert.deepEqual(X.moveId(ids, '1', -1), ['3', '1', 'u:0000000a', '2', 'u:0000000b']);
+  assert.deepEqual(X.moveId(ids, '3', -1), ids);
+  assert.deepEqual(X.moveId(ids, 'nope', 1), ids);
+  // trascinamento: prima o dopo la voce di arrivo; su sé stessa o fuori elenco nessun cambio
+  assert.deepEqual(X.moveIdTo(ids, 'u:0000000b', '3', false), ['u:0000000b', '3', 'u:0000000a', '1', '2']);
+  assert.deepEqual(X.moveIdTo(ids, '3', '2', true), ['u:0000000a', '1', '2', '3', 'u:0000000b']);
+  assert.deepEqual(X.moveIdTo(ids, '3', '3', true), ids);
+  assert.deepEqual(X.moveIdTo(ids, 'nope', '3', true), ids);
+  assert.deepEqual(X.moveIdTo(ids, '3', 'nope', true), ids);
+  // elementi delle categorie nascoste esclusi; stessa lista se non ce ne sono
+  const items = [{ stream_id: 1, category_id: '1' }, { stream_id: 2, category_id: '2' }];
+  assert.deepEqual(X.withoutHidden(items, custom).map((i) => i.stream_id), [1]);
+  assert.equal(X.withoutHidden(items, {}), items);
+  // righe: i gruppi prendono gli elementi dalla loro lista, anche da categorie diverse
+  const groupItems = new Map([['u:0000000a', [items[1], items[0]]]]);
+  assert.deepEqual(X.groupByCategory(items, vis, groupItems).map((g) => [g.id, g.group, g.items.map((i) => i.stream_id)]),
+    [['u:0000000a', true, [2, 1]], ['1', false, [1]]]);
+  // gruppo e categoria insieme: senza doppioni
+  assert.deepEqual(X.itemsInCategories(items, vis, ['1', 'u:0000000a'], groupItems).map((i) => i.stream_id), [2, 1]);
+});
+
 test('aggiornamento giornaliero delle liste', () => {
   const day = 86400000, now = 1_800_000_000_000;
   assert.equal(X.refreshDue(now - day + 1000, now, day), false);

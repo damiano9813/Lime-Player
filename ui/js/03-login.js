@@ -207,7 +207,9 @@ function leaveAccount() {
   unloadAccountData();
   S.categories = perMode(() => null);
   S.catNames = perMode(() => new Map());
+  S.rawCategories = perMode(() => null);
   S.liveReady = false;
+  closeCustom();
   closeGuide();
   resetBrowse();
   resetGuide();

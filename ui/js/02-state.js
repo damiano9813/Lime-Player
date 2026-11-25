@@ -25,8 +25,14 @@ const S = {
   mode: 'live',
   // categorie e canali della Live TV si caricano alla prima apertura
   liveReady: false,
+  // categorie da mostrare (quelle del provider in rawCategories con le personalizzazioni di
+  // 04b-custom.js: nascoste tolte, nomi e ordine scelti, gruppi personali)
   categories: perMode(() => null),
   catNames: perMode(() => new Map()),
+  rawCategories: perMode(() => null),
+  // personalizzazioni { hidden, names, order, groups } e gruppi personali (Map id -> elementi)
+  custom: perMode(() => XPCore.normalizeCustom(null)),
+  groups: perMode(() => new Map()),
   // id dell'account collegato (XPCore.accountId): prefisso dei dati legati al provider
   acct: '',
   // categoria scelta, preferiti e recenti si caricano al login (loadAccountData)
@@ -89,6 +95,7 @@ function loadAccountData() {
   S.multiCats = perMode((m) => { const v = lsGet(ak('cats.' + m), []); return Array.isArray(v) ? v.map(String) : []; });
   S.favorites = perMode((m) => lsGet(ak('fav.' + m), []));
   S.recent = perMode((m) => lsGet(ak('recent.' + m), []));
+  reloadCustom();
 }
 
 function unloadAccountData() {
@@ -97,4 +104,6 @@ function unloadAccountData() {
   S.multiCats = perMode(() => []);
   S.favorites = perMode(() => []);
   S.recent = perMode(() => []);
+  S.custom = perMode(() => XPCore.normalizeCustom(null));
+  S.groups = perMode(() => new Map());
 }

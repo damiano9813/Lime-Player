@@ -130,9 +130,9 @@
   }
 
   // ------------------------------------------------------------------ cosa si sincronizza
-  // per account: preferiti, recenti, posizioni di ripresa e ultimo episodio delle serie
-  // (categoria scelta e percorsi di riproduzione restano del dispositivo)
-  const ACCOUNT_KEY_RE = /^xp\.a\.[0-9a-f]{8}\.((?:fav|recent)\.(?:live|vod|series)|(?:resume|series\.last)\..+)$/;
+  // per account: preferiti, recenti, posizioni di ripresa, ultimo episodio delle serie, categorie
+  // personalizzate e gruppi personali (categoria scelta e percorsi di riproduzione restano del dispositivo)
+  const ACCOUNT_KEY_RE = /^xp\.a\.[0-9a-f]{8}\.((?:fav|recent|custom)\.(?:live|vod|series)|group\.(?:live|vod|series)\.[0-9a-f]{8}|(?:resume|series\.last)\..+)$/;
   const SETTINGS_KEY = 'xp.settings';
   // impostazioni comuni a tutti i dispositivi (motore, buffer e uscita audio dipendono dall'hardware)
   const SHARED_SETTINGS = ['audioLang', 'subLang'];
@@ -154,13 +154,32 @@
     return max ? out.slice(0, max) : out;
   }
 
+  // categorie personalizzate di una sezione: { hidden, names, order, groups }
+  const isCustomKey = (k) => /\.custom\.(?:live|vod|series)$/.test(String(k));
+  const asObj = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
+  const asArr = (v) => (Array.isArray(v) ? v : []);
+  // unione delle personalizzazioni di due dispositivi: per nomi e ordine prima la remota
+  function mergeCustom(remote, local) {
+    const r = asObj(remote), l = asObj(local);
+    const union = (a, b) => Array.from(new Set(asArr(a).concat(asArr(b)).map(String)));
+    const seen = new Set(), groups = [];
+    for (const g of asArr(r.groups).concat(asArr(l.groups))) {
+      if (!g || !g.id || seen.has(g.id)) continue;
+      seen.add(g.id); groups.push(g);
+    }
+    return { hidden: union(r.hidden, l.hidden), names: { ...asObj(l.names), ...asObj(r.names) }, order: union(r.order, l.order), groups };
+  }
+  // valore unito alla prima sincronizzazione di una voce presente su entrambi i dispositivi
+  const mergeValue = (k, remote, local, max) => (isCustomKey(k) ? mergeCustom(remote, local) : unionList(remote, local, max));
+
   // Decide cosa fare di una voce arrivata dal server.
   //   local: { v, t } con t = data della modifica locale (0: mai sincronizzata), v = valore attuale
   //   remote: { v, t, d } come pubblicata dall'altro dispositivo
-  // -> 'keep' (vince la locale), 'take' (vince la remota), 'merge' (prima volta, liste: unione)
+  // -> 'keep' (vince la locale), 'take' (vince la remota), 'merge' (prima volta, liste e
+  //    personalizzazioni: unione)
   function resolve(k, local, remote) {
     const lt = Number(local.t) || 0, rt = Number(remote.t) || 0;
-    if (local.t === 0 && local.v != null && isListKey(k) && !remote.d) return 'merge';
+    if (local.t === 0 && local.v != null && (isListKey(k) || isCustomKey(k)) && !remote.d) return 'merge';
     return rt > lt ? 'take' : 'keep';
   }
 
@@ -175,7 +194,7 @@
   return {
     b32encode, b32decode, toB64, fromB64, newSyncCode, parseSyncCode, deriveKeys, itemId, seal, open,
     sealWith, openWith, newPairCode, cleanPairCode, formatPairCode, pairKeyPair, pairSecret,
-    ACCOUNT_KEY_RE, SETTINGS_KEY, SHARED_SETTINGS, isSyncedKey, isListKey, sharedSettings, valueTime, unionList, resolve,
+    ACCOUNT_KEY_RE, SETTINGS_KEY, SHARED_SETTINGS, isSyncedKey, isListKey, isCustomKey, sharedSettings, valueTime, unionList, mergeCustom, mergeValue, resolve,
     accountItemKey, isAccountItemKey, sha256Hex,
   };
 });

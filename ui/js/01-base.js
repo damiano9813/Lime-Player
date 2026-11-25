@@ -23,6 +23,21 @@ const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } ca
 const lsDel = (k) => { try { localStorage.removeItem(k); } catch { /* ignorato */ } if (onStoreWrite) onStoreWrite(k); };
 const lsKeys = () => { try { return Object.keys(localStorage); } catch { return []; } };
 
+// Ridisegno di un contenitore che può avere lo stato attivo del telecomando: `keys(attivo)` dà i
+// selettori con cui ritrovare la stessa voce (in ordine di preferenza), che dopo `render()` lo
+// riprende senza scorrere. Senza, la freccia successiva ripartirebbe dal primo elemento.
+function keepFocus(box, keys, render) {
+  const a = document.activeElement;
+  // col telecomando o la tastiera: dopo un clic del mouse il pulsante non resta attivo
+  const sels = a && a !== box && box.contains(a) && (PLATFORM.tv || a.matches(':focus-visible')) ? keys(a) : null;
+  render();
+  if (!sels || box.contains(document.activeElement)) return;
+  for (const sel of sels) {
+    const el = sel && box.querySelector(sel);
+    if (el) { el.focus({ preventScroll: true }); return; }
+  }
+}
+
 let toastTimer = null;
 const TOAST_ICONS = {
   error: '<svg class="w-4 h-4 shrink-0 text-danger" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v5M12 16h.01"/></svg>',
@@ -42,6 +57,8 @@ function toast(msg, kind) {
 let modalResolve = null, modalReturnFocus = null;
 function openModal(title, bodyHtml, actions) {
   closeModal(false);
+  // a schermo intero la finestra resterebbe coperta (sulla TV, invisibile ma attiva)
+  if (fsElement()) exitFullscreen();
   modalReturnFocus = document.activeElement;
   $('modal-title').textContent = title;
   $('modal-body').innerHTML = bodyHtml;

@@ -44,13 +44,24 @@ const SPIN_SVG = '<svg class="w-8 h-8 spin" viewBox="0 0 24 24" fill="none" stro
 
 // ------------------------------------------------------------------ cataloghi
 const catalogKey = (mode) => mode + '|' + ALL;
-const catalogItems = (mode) => (S.categories[mode] && S.cache.get(catalogKey(mode))) || null;
+const rawCatalog = (mode) => (S.categories[mode] && S.cache.get(catalogKey(mode))) || null;
+// catalogo senza le categorie nascoste (04b-custom.js), ricalcolato solo se cambia uno dei due
+const visibleCatalogs = new WeakMap();
+function catalogItems(mode) {
+  const items = rawCatalog(mode);
+  if (!items) return null;
+  const hit = visibleCatalogs.get(items);
+  if (hit && hit.custom === S.custom[mode]) return hit.list;
+  const list = visibleItems(mode, items);
+  visibleCatalogs.set(items, { custom: S.custom[mode], list });
+  return list;
+}
 
 // Catalogo completo di una sezione (categorie e tutti gli elementi), condiviso con la lista della
 // Live TV. Con "prefer" arriva subito quello salvato su disco; il backend lo riscarica in
 // background e lo segnala con l'evento list-updated (onListUpdated, poi onCatalogUpdated).
 function ensureCatalog(mode, force) {
-  if (!force && catalogItems(mode)) return Promise.resolve(catalogItems(mode));
+  if (!force && rawCatalog(mode)) return Promise.resolve(catalogItems(mode));
   if (B.pending.has(mode)) return B.pending.get(mode);
   const acct = S.acct;
   const p = (async () => {
@@ -62,7 +73,7 @@ function ensureCatalog(mode, force) {
     S.cache.set(catalogKey(mode), prepareItems(res.items));
     S.listAge.set(catalogKey(mode), res.fetched_at);
     delete B.errors[mode];
-    return S.cache.get(catalogKey(mode));
+    return catalogItems(mode);
   })().catch((e) => {
     if (S.acct === acct) B.errors[mode] = errText(e);
     return null;
@@ -89,12 +100,13 @@ function needCatalog(mode) {
 // lista riscaricata in background: la pagina si aggiorna restando dov'era
 const onCatalogUpdated = debounce(() => { if (S.creds && browseVisible()) renderBrowse(false); }, 400);
 
-// righe per categoria, ricalcolate solo se cambiano catalogo o categorie
+// righe per categoria e gruppo personale, ricalcolate solo se cambiano catalogo o categorie
+// (applyCustom crea un nuovo elenco di categorie anche quando cambiano i gruppi)
 function groupsFor(mode, items) {
   const cats = S.categories[mode] || [];
   const hit = B.groups.get(items);
   if (hit && hit.cats === cats) return hit.groups;
-  const groups = XPCore.groupByCategory(items, cats);
+  const groups = XPCore.groupByCategory(items, cats, S.groups[mode]);
   B.groups.set(items, { cats, groups });
   return groups;
 }
@@ -339,7 +351,8 @@ const skelGrid = () => `<div class="pgrid">${skelCards(14)}</div>`;
 function browseRowHtml(row, r) {
   const head = row.title ? `<div class="row-head${row.grid ? ' mb-1' : ''}"><h2 class="row-title">${escapeHtml(row.title)}</h2>` +
     (row.count ? `<span class="text-xs font-semibold text-ink-subtle tabular-nums">${row.count > row.entries.length ? `primi ${row.entries.length} di ${row.count.toLocaleString('it-IT')}` : row.count}</span>` : '') +
-    (row.all ? `<button class="row-all" data-all="${r}">Vedi tutti ›</button>` : '') + '</div>' : '';
+    // sulla TV "Vedi tutti" è l'ultima scheda della riga (rowCards): il titolo non ferma le frecce
+    (row.all ? `<button class="row-all" data-all="${r}"${PLATFORM.tv ? ' tabindex="-1"' : ''}>Vedi tutti ›</button>` : '') + '</div>' : '';
   if (row.error) return `<section class="space-y-3">${head}${errorHtml(row.error)}</section>`;
   if (row.loading) return `<section>${head}<div class="row-track" aria-hidden="true">${skelCards(9)}</div></section>`;
   const wide = row.kind === 'channel' ? ' wide' : '';
@@ -352,9 +365,16 @@ function browseRowHtml(row, r) {
   return `<section aria-label="${escapeHtml(row.title)}">${head}
     <div class="row-wrap" data-start>
       <button class="row-arrow l" data-scroll="-1" tabindex="-1" aria-hidden="true">${CHEV('M15 18l-6-6 6-6')}</button>
-      <div class="row-track${wide}${lazy}" role="list" data-r="${r}">${row.lazy ? '' : cardsHtml(row, r, 0, row.entries.length)}</div>
+      <div class="row-track${wide}${lazy}" role="list" data-r="${r}">${row.lazy ? '' : rowCards(row, r)}</div>
       <button class="row-arrow r" data-scroll="1" tabindex="-1" aria-hidden="true">${CHEV('M9 18l6-6-6-6')}</button>
     </div></section>`;
+}
+
+// tutte le schede di una riga; sulla TV in fondo "Vedi tutti", raggiungibile con →
+function rowCards(row, r) {
+  const more = PLATFORM.tv && row.all
+    ? `<div class="pcard" role="listitem"><button class="pcard-btn" data-all="${r}"><span class="pcard-img pcard-more${row.kind === 'channel' ? ' wide' : ''}">Vedi tutti ›</span></button></div>` : '';
+  return cardsHtml(row, r, 0, row.entries.length) + more;
 }
 
 function cardsHtml(row, r, from, to) {
@@ -437,7 +457,7 @@ function observeLazy() {
         continue;
       }
       B.io.unobserve(t);
-      t.innerHTML = cardsHtml(row, +t.dataset.r, 0, row.entries.length);
+      t.innerHTML = rowCards(row, +t.dataset.r);
       t.classList.remove('loading');
     }
   }, { root: browseScroller, rootMargin: '700px 0px' });

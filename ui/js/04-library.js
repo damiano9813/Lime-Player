@@ -23,13 +23,14 @@ async function fetchCategories(mode, forceReload) {
   try {
     const res = await invoke('get_categories', { ...S.creds, mode: MODE_API[mode].cats, cache: forceReload ? 'refresh' : 'prefer' });
     if (S.acct !== acct) return false;
-    S.categories[mode] = res.items;
-    S.catNames[mode] = new Map(res.items.map((c) => [c.category_id, c.category_name]));
+    S.rawCategories[mode] = res.items;
   } catch (e) {
     if (S.acct !== acct) return false;
-    S.categories[mode] = [];
+    S.rawCategories[mode] = [];
     toast('Errore categorie: ' + errText(e), 'error');
   }
+  // con nascoste, nomi, ordine e gruppi scelti (04b-custom.js)
+  applyCustom(mode);
   return true;
 }
 
@@ -63,10 +64,28 @@ function renderCategories() {
   const visible = q ? cats.filter((c) => normKey(c.category_name).includes(q)) : cats;
   html += visible.map((c) => picked.has(String(c.category_id))
     ? btn(`data-cat="${escapeHtml(c.category_id)}"`, false, c.category_name, `<span class="text-accent">${ICONS.check}</span>`)
+    : c.group ? item(c.category_id, c.category_name, `<span class="text-info">${CE_ICONS.folder}</span>`, groupItems(mode, c.category_id).length)
     : item(c.category_id, c.category_name)).join('');
   if (!visible.length && q) html += '<p class="text-xs text-ink-subtle p-3">Nessuna categoria trovata.</p>';
   if (!cats.length && !q) html += '<p class="text-xs text-ink-subtle p-3">Nessuna categoria disponibile.</p>';
-  $('cat-list').innerHTML = html;
+  // col telecomando la voce scelta (o quella su cui si era) resta attiva
+  keepFocus($('cat-list'), (a) => [a.dataset.cat != null ? `[data-cat="${CSS.escape(a.dataset.cat)}"]` : a.dataset.catpick ? '[data-catpick]' : '', '[aria-current="true"]'],
+    () => { $('cat-list').innerHTML = html; });
+}
+// Aggiornamenti mirati: ridisegnare centinaia di categorie costa sul box anche 300 ms (quasi
+// tutto impaginazione del testo), per un contatore o per la voce scelta basta toccare una voce.
+function setCatCount(id, n) {
+  const el = $('cat-list').querySelector(`[data-cat="${id}"] .tabular-nums`);
+  if (el) el.textContent = n;
+}
+// stesse classi di btn() in renderCategories, per la voce scelta e le altre
+const CAT_ON = ['bg-accent-soft', 'text-accent-ink', 'font-bold'], CAT_OFF = ['text-ink-muted', 'font-medium', 'hover:bg-s3', 'hover:text-ink'];
+function setCatActive(b, on) {
+  b.classList.remove(...(on ? CAT_OFF : CAT_ON));
+  b.classList.add(...(on ? CAT_ON : CAT_OFF));
+  if (on) b.setAttribute('aria-current', 'true'); else b.removeAttribute('aria-current');
+  const n = b.querySelector('.tabular-nums');
+  if (n) { n.classList.toggle('text-accent-ink', on); n.classList.toggle('text-ink-subtle', !on); }
 }
 function revealSelectedCategory() {
   const el = $('cat-list').querySelector('[aria-current="true"]');
@@ -92,7 +111,9 @@ const multiCatNames = (mode) => S.multiCats[mode].map((id) => categoryLabel(mode
 
 async function selectCategory(catId) {
   const mode = S.mode;
-  const known = S.categories[mode] && S.categories[mode].length ? (id) => S.catNames[mode].has(id) : () => true;
+  // categorie mostrate (non nascoste) e gruppi personali
+  const shown = new Set((S.categories[mode] || []).map((c) => String(c.category_id)));
+  const known = S.rawCategories[mode] && S.rawCategories[mode].length ? (id) => shown.has(String(id)) : () => true;
   if (catId === MULTI) {
     // categorie sparite dal provider dopo un aggiornamento: con una sola rimasta si torna alla scelta singola
     const ids = S.multiCats[mode].filter(known);
@@ -100,9 +121,16 @@ async function selectCategory(catId) {
     if (ids.length < 2) catId = ids[0] || ALL;
   }
   if (!isVirtualCat(catId) && !known(catId)) catId = ALL;
+  const prev = S.selectedCat[mode];
   S.selectedCat[mode] = catId;
   lsSet(ak('cat.' + mode), catId);
-  renderCategories();
+  // più categorie insieme cambiano anche spunte e "Più categorie…": lì si ridisegna tutto
+  const box = $('cat-list');
+  const target = box.querySelector(`[data-cat="${CSS.escape(catId)}"]`);
+  if (prev !== MULTI && catId !== MULTI && target) {
+    box.querySelectorAll('[data-cat][aria-current="true"]').forEach((b) => { if (b !== target) setCatActive(b, false); });
+    setCatActive(target, true);
+  } else renderCategories();
   revealSelectedCategory();
   $('list-title').textContent = categoryLabel(mode, catId);
   $('list-title').title = catId === MULTI ? multiCatNames(mode).join(', ') : $('list-title').textContent;
@@ -124,8 +152,8 @@ function prepareItems(items) {
   return items;
 }
 
-// più categorie insieme: si filtra la lista completa, nell'ordine delle categorie del provider
-const multiCatItems = (mode, all) => XPCore.itemsInCategories(all, S.categories[mode], S.multiCats[mode]);
+// più categorie insieme: si filtra la lista completa, nell'ordine delle categorie (anche gruppi personali)
+const multiCatItems = (mode, all) => XPCore.itemsInCategories(all, S.categories[mode], S.multiCats[mode], S.groups[mode]);
 
 // elementi di una categoria ('' = tutti) dal backend: { items, from_cache, fetched_at }
 function invokeList(creds, mode, categoryId, cache) {
@@ -141,6 +169,8 @@ async function loadStreams(mode, catId, forceReload) {
   let items;
   if (catId === FAV || catId === RECENT) {
     items = prepareItems((catId === FAV ? S.favorites : S.recent)[mode].slice());
+  } else if (isGroupId(catId)) {
+    items = prepareItems(groupItems(mode, catId).slice());
   } else {
     const key = mode + '|' + listId;
     const allKey = mode + '|' + ALL;
@@ -168,7 +198,8 @@ async function loadStreams(mode, catId, forceReload) {
     }
   }
   if (seq !== S.loadSeq) return;
-  S.list = catId === MULTI ? multiCatItems(mode, items) : items;
+  // nella lista completa non compaiono le categorie nascoste
+  S.list = catId === MULTI ? multiCatItems(mode, items) : catId === ALL ? visibleItems(mode, items) : items;
   applyFilter(true);
   locateCurrent(false);
   setListAge(S.listAge.get(mode + '|' + listId));
@@ -209,8 +240,8 @@ function onListUpdated(p) {
 function applyListUpdate(p) {
   const mode = modeOfAction(p.action);
   if (MODE_API[mode].cats === p.action) {
-    S.categories[mode] = p.items;
-    S.catNames[mode] = new Map(p.items.map((c) => [c.category_id, c.category_name]));
+    S.rawCategories[mode] = p.items;
+    applyCustom(mode);
     if (S.mode === mode) renderCategories();
     onCatalogUpdated(mode);
     return;
@@ -224,9 +255,9 @@ function applyListUpdate(p) {
   S.listAge.set(key, p.fetched_at);
   if (catId === ALL) onCatalogUpdated(mode);
   const sel = S.selectedCat[mode];
-  if (S.mode !== mode || sel === FAV || sel === RECENT) return;
+  if (S.mode !== mode || sel === FAV || sel === RECENT || isGroupId(sel)) return;
   if (sel !== catId && catId !== ALL) return;
-  let list = items;
+  let list = sel === ALL ? visibleItems(mode, items) : items;
   if (sel === MULTI) list = multiCatItems(mode, items);
   else if (sel !== catId) { list = items.filter((s) => s.category_id === sel); S.cache.set(mode + '|' + sel, list); }
   const before = S.list.length;
@@ -393,7 +424,7 @@ $('list-clear-recent').addEventListener('click', () => {
   const mode = S.mode;
   S.recent[mode] = [];
   lsSet(ak('recent.' + mode), []);
-  renderCategories();
+  setCatCount(RECENT, 0);
   if (S.selectedCat[mode] === RECENT) { S.list = []; applyFilter(true); }
 });
 
@@ -414,7 +445,7 @@ function toggleFav(mode, item) {
   else S.favorites[mode].splice(i, 1);
   lsSet(ak('fav.' + mode), S.favorites[mode]);
   if (S.mode === mode) {
-    renderCategories();
+    setCatCount(FAV, S.favorites[mode].length);
     if (S.selectedCat[mode] === FAV) { S.list = prepareItems(S.favorites[mode].slice()); applyFilter(false); } else renderList(true);
   }
   updateFavButton();
@@ -428,5 +459,6 @@ function pushRecent(mode, item) {
   list.unshift(slimItem(item));
   S.recent[mode] = list.slice(0, RECENT_MAX);
   lsSet(ak('recent.' + mode), S.recent[mode]);
-  if (S.mode === mode) renderCategories();
+  // a ogni cambio di canale: solo il numero, non centinaia di categorie
+  if (S.mode === mode) setCatCount(RECENT, S.recent[mode].length);
 }
