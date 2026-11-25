@@ -1,17 +1,26 @@
-# Xtream Player (Tauri v2)
+<img src="ui/img/logo.svg" alt="" width="96" align="right">
+
+# Lime Player (Tauri v2)
 
 Player IPTV compatibile con le API Xtream Codes per **Windows**, **Android** (telefoni e tablet) e
 **Android TV / Google TV**, con la stessa interfaccia su tutti i dispositivi e la
 [sincronizzazione](#sincronizzazione) di playlist, preferiti, punti di ripresa e categorie personalizzate.
 
+Fino alla 1.3.0 si chiamava "Xtream Player". Gli identificatori tecnici sono rimasti quelli
+(`com.xtreamplayer.desktop`, `com.xtreamplayer.app`, le voci `Xtream Player/…` in Gestione
+credenziali): cambiarli farebbe perdere playlist, password e cache e, su Android, l'aggiornamento
+sopra l'app installata. Su Windows il primo aggiornamento a Lime Player toglie la vecchia
+installazione "Xtream Player" (hook dell'installer in `src-tauri/windows/hooks.nsh`).
+
 ## Struttura
 
 ```
 Lime-Player/
-├─ package.json                  script `npm test`, `npm run fetch:ffmpeg`, `npm run fetch:mpv`
+├─ package.json                  script `npm test`, `npm run fetch:ffmpeg`, `npm run fetch:mpv`, `npm run icons`
 ├─ scripts/fetch-ffmpeg.mjs      scarica ffmpeg/ffprobe LGPL (versione fissata, SHA-256)
 ├─ scripts/fetch-mpv.mjs         scarica libmpv-2.dll (versione fissata, SHA-256)
 ├─ scripts/fix-updater-json.mjs  link di download diretti in latest.json (workflow di release)
+├─ scripts/make-icons.mjs        disegna il logo (SVG) e genera icone Windows e Android e banner TV
 ├─ tests/core.test.js            test della logica pura del frontend (node --test)
 ├─ tests/sync.test.js            test di crittografia e conflitti della sincronizzazione
 ├─ supabase/schema.sql           tabelle e funzioni del server di sincronizzazione
@@ -40,6 +49,7 @@ Lime-Player/
 │     └─ 10-main.js              tastiera e avvio
 └─ src-tauri/
    ├─ Cargo.toml, build.rs, tauri.conf.json, tauri.android.conf.json, capabilities/, icons/
+   ├─ windows/hooks.nsh          installer: rimuove la vecchia installazione "Xtream Player"
    ├─ gen/android/               progetto Android (Gradle); il codice nostro è in
    │                             app/src/main/java/com/xtreamplayer/app/NativePlugin.kt
    ├─ binaries/                  generata: ffmpeg/ffprobe per l'installer (non versionata)
@@ -158,9 +168,9 @@ $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = ""   # la password scelta alla generaz
 cargo tauri build
 ```
 
-Output: `src-tauri\target\release\xtream-player.exe` e in `src-tauri\target\release\bundle\nsis\`
-l'installer `Xtream Player_<versione>_x64-setup.exe` con la sua firma `.sig`. L'installer copia
-`ffmpeg.exe`, `ffprobe.exe` e `ffmpeg-LICENSE.txt` accanto a `xtream-player.exe`.
+Output: `src-tauri\target\release\lime-player.exe` e in `src-tauri\target\release\bundle\nsis\`
+l'installer `Lime Player_<versione>_x64-setup.exe` con la sua firma `.sig`. L'installer copia
+`ffmpeg.exe`, `ffprobe.exe` e `ffmpeg-LICENSE.txt` accanto a `lime-player.exe`.
 
 ## Aggiornamenti
 
@@ -194,8 +204,8 @@ aggiornata. Nelle Impostazioni, "Cerca aggiornamenti" ripete il controllo.
     "pub_date": "2026-10-18T12:00:00Z",
     "platforms": {
       "windows-x86_64": {
-        "signature": "<contenuto di Xtream Player_1.2.3_x64-setup.exe.sig>",
-        "url": "https://github.com/damiano9813/Lime-Player/releases/download/v1.2.3/Xtream.Player_1.2.3_x64-setup.exe"
+        "signature": "<contenuto di Lime Player_1.2.3_x64-setup.exe.sig>",
+        "url": "https://github.com/damiano9813/Lime-Player/releases/download/v1.2.3/Lime.Player_1.2.3_x64-setup.exe"
       }
     }
   }

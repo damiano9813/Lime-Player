@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Xtream Player</title>
+<title>Lime Player</title>
 <!-- generati da "npm run build:ui" (Tailwind compilato con i token del design system, font, mpegts.js e hls.js locali) -->
 <link rel="stylesheet" href="vendor/app.css">
 <script src="vendor/mpegts.min.js"></script>
@@ -18,7 +18,7 @@
   button:focus-visible, [tabindex]:focus-visible, input:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
   #list-scroller:focus-visible, #guide-scroller:focus-visible { outline-offset: -2px; }
 
-  /* componenti del design system (vedi il design system "Xtream Player") */
+  /* componenti del design system (vedi il design system "Lime Player") */
   .btn { display: inline-flex; align-items: center; justify-content: center; gap: .5rem; height: 36px; padding: 0 1rem; border-radius: 8px; border: 1px solid transparent; font-size: 14px; line-height: 20px; font-weight: 700; white-space: nowrap; transition: background-color .15s, border-color .15s, color .15s, transform .1s; }
   .btn:active:not(:disabled) { transform: translateY(1px); }
   .btn:disabled { opacity: .4; cursor: not-allowed; box-shadow: none; }
@@ -135,7 +135,7 @@
   .cp-box svg { width: 11px; height: 11px; }
   #catpick-list .menu-opt, .gpick .menu-opt { height: 32px; }
   #catpick-list .menu-opt:focus-visible, .gpick .menu-opt:focus-visible { background: var(--glass-hover); color: var(--ink); outline: none; }
-  #catpick-list .menu-opt.on .cp-box, .gpick .menu-opt.on .cp-box { background: var(--accent); border-color: var(--accent); color: #fff; }
+  #catpick-list .menu-opt.on .cp-box, .gpick .menu-opt.on .cp-box { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
   /* pagina "Categorie e gruppi" (04b-custom.js) */
   #custom-view:not(.hidden) { animation: fade-in .15s ease-out; }
   .cv-tabs, .cv-seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--surface-200); border: 1px solid var(--line); }
@@ -415,15 +415,13 @@
 <div id="mpv-backdrop" aria-hidden="true"></div>
 
 <!-- ============================ LOGIN ============================ -->
-<div id="login-view" class="h-full flex justify-center p-6 overflow-y-auto bg-[radial-gradient(ellipse_at_top,rgba(229,9,20,0.14),transparent_55%)]">
+<div id="login-view" class="h-full flex justify-center p-6 overflow-y-auto bg-[radial-gradient(ellipse_at_top,rgba(182,236,58,0.09),transparent_55%)]">
   <!-- my-auto: centrata, ma su schermi bassi (TV, telefono) scorre invece di uscire dal bordo -->
   <div class="w-full max-w-md my-auto">
     <div class="flex flex-col items-center gap-4 mb-8 text-center">
-      <div class="w-14 h-14 rounded-2xl bg-accent flex items-center justify-center shadow-glow">
-        <svg class="w-7 h-7 text-on-accent" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11.04-6.86a1 1 0 0 0 0-1.72L9.5 4.28A1 1 0 0 0 8 5.14z"/></svg>
-      </div>
+      <img src="img/logo.svg" alt="" class="w-20 h-20" draggable="false">
       <div>
-        <h1 class="text-[28px] leading-[34px] font-extrabold tracking-tight">Xtream Player</h1>
+        <h1 class="text-[28px] leading-[34px] font-extrabold tracking-tight">Lime Player</h1>
         <p class="text-sm text-ink-muted mt-1">Player IPTV per playlist Xtream Codes</p>
       </div>
     </div>
@@ -494,10 +492,8 @@
   <!-- Barra in alto: sezioni, ricerca, impostazioni e account -->
   <header id="topbar" class="relative z-20 h-16 shrink-0 flex items-center gap-1.5 px-[var(--gutter)]">
     <div class="flex items-center gap-2.5 mr-5 shrink-0">
-      <div class="w-8 h-8 rounded-md bg-accent flex items-center justify-center shadow-glow">
-        <svg class="w-4 h-4 text-on-accent" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11.04-6.86a1 1 0 0 0 0-1.72L9.5 4.28A1 1 0 0 0 8 5.14z"/></svg>
-      </div>
-      <span class="font-extrabold tracking-tight text-[17px] hidden xl:inline">Xtream Player</span>
+      <img src="img/logo-small.svg" alt="" class="w-9 h-9" draggable="false">
+      <span class="font-extrabold tracking-tight text-[17px] hidden xl:inline">Lime Player</span>
     </div>
     <nav id="nav" class="flex items-center gap-0.5 min-w-0" role="tablist" aria-label="Sezioni">
       <!-- le icone si vedono solo nella barra in basso del telefono in verticale -->
@@ -623,7 +619,7 @@
           <div id="player-wrap" class="relative w-full aspect-video max-h-[72vh] bg-s0 rounded-xl overflow-hidden border border-line select-none">
             <video id="video" class="w-full h-full bg-black" playsinline preload="auto" crossorigin="anonymous"></video>
 
-            <div id="player-empty" class="absolute inset-0 flex flex-col items-center justify-center gap-5 p-6 text-center bg-[radial-gradient(ellipse_at_center,rgba(229,9,20,0.08),transparent_60%)]">
+            <div id="player-empty" class="absolute inset-0 flex flex-col items-center justify-center gap-5 p-6 text-center bg-[radial-gradient(ellipse_at_center,rgba(182,236,58,0.05),transparent_60%)]">
               <div class="w-16 h-16 rounded-2xl bg-s3 border border-line flex items-center justify-center text-accent">
                 <svg class="w-7 h-7" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11.04-6.86a1 1 0 0 0 0-1.72L9.5 4.28A1 1 0 0 0 8 5.14z"/></svg>
               </div>

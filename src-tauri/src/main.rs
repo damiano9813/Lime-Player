@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    xtream_player_lib::run()
+    lime_player_lib::run()
 }

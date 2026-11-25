@@ -1,5 +1,5 @@
 {
-  "name": "xtream-player",
+  "name": "lime-player",
   "version": "1.3.0",
   "private": true,
   "description": "Player IPTV desktop compatibile con le API Xtream Codes (Tauri v2)",
@@ -9,7 +9,8 @@
     "build:css": "tailwindcss -c tailwind.config.js -i tailwind.css -o ui/vendor/app.css --minify",
     "build:ui": "npm run vendor && npm run build:css",
     "fetch:ffmpeg": "node scripts/fetch-ffmpeg.mjs",
-    "fetch:mpv": "node scripts/fetch-mpv.mjs"
+    "fetch:mpv": "node scripts/fetch-mpv.mjs",
+    "icons": "node scripts/make-icons.mjs"
   },
   "devDependencies": {
     "@fontsource-variable/manrope": "5.2.8",

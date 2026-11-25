@@ -1,5 +1,5 @@
 /** Tailwind compilato in ui/vendor/app.css (npm run build:css), invece del CDN.
- *  I colori puntano alle variabili del design system "Xtream Player" definite in tailwind.css. */
+ *  I colori puntano alle variabili del design system "Lime Player" definite in tailwind.css. */
 const v = (name) => `var(--${name})`;
 
 module.exports = {

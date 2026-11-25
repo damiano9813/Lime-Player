@@ -86,5 +86,5 @@ jobs:
         run: |
           VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
           APK=$(find src-tauri/gen/android/app/build/outputs/apk -name '*-release.apk' | head -n 1)
-          cp "$APK" "Xtream-Player_${VERSION}_android.apk"
-          gh release upload "v$VERSION" "Xtream-Player_${VERSION}_android.apk" --clobber
+          cp "$APK" "Lime-Player_${VERSION}_android.apk"
+          gh release upload "v$VERSION" "Lime-Player_${VERSION}_android.apk" --clobber

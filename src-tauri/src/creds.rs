@@ -127,7 +127,9 @@ pub struct KeyringVault;
 #[cfg(windows)]
 impl KeyringVault {
     fn entry(key: &str) -> Result<keyring::Entry, String> {
-        // nome leggibile in Gestione credenziali > Credenziali generiche
+        // nome leggibile in Gestione credenziali > Credenziali generiche. È anche la chiave con
+        // cui la password viene ritrovata: resta quello del vecchio nome dell'app, altrimenti le
+        // password già salvate non si leggerebbero più.
         let target = format!("Xtream Player/{}", key);
         keyring::Entry::new_with_target(&target, SERVICE, key).map_err(|e| e.to_string())
     }

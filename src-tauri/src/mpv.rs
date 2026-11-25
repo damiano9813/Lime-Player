@@ -231,7 +231,7 @@ fn init_options(wid: isize) -> Vec<(&'static str, String)> {
             "stream-lavf-o",
             "reconnect=1,reconnect_streamed=1,reconnect_delay_max=5".into(),
         ),
-        ("audio-client-name", "Xtream Player".into()),
+        ("audio-client-name", "Lime Player".into()),
     ]
 }
 
@@ -242,7 +242,7 @@ fn create_video_window(parent: isize) -> Result<isize, String> {
         CreateWindowExW, DefWindowProcW, RegisterClassW, SetWindowPos, HWND_BOTTOM, SWP_NOACTIVATE,
         SWP_NOMOVE, SWP_NOSIZE, WNDCLASSW, WS_CHILD, WS_CLIPCHILDREN, WS_DISABLED,
     };
-    let class: Vec<u16> = "XtreamPlayerVideo\0".encode_utf16().collect();
+    let class: Vec<u16> = "LimePlayerVideo\0".encode_utf16().collect();
     // SAFETY: chiamate Win32 sul thread che possiede la finestra principale; la classe usa
     // DefWindowProcW e il pennello nero di sistema (nessuna risorsa da liberare)
     unsafe {

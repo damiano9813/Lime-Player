@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="t-bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1a2712"/><stop offset="1" stop-color="#070a06"/></linearGradient>
+    <radialGradient id="t-glow" gradientUnits="userSpaceOnUse" cx="488.99" cy="512" r="546.59">
+      <stop offset="0" stop-color="#b6f03c" stop-opacity="0.26"/><stop offset="1" stop-color="#b6f03c" stop-opacity="0"/></radialGradient>
+    <clipPath id="g-w"><path d="M-64.73 37.37L-462.08 266.78A40.28 40.28 0 0 1 -518.52 249.36A575.36 575.36 0 0 1 -518.52 -249.36A40.28 40.28 0 0 1 -462.08 -266.78L-64.73 -37.37A43.15 43.15 0 0 1 -64.73 37.37Z"/></clipPath>
+    <linearGradient id="g-rind" gradientUnits="userSpaceOnUse" x1="-575.36" y1="-287.68" x2="0" y2="287.68">
+      <stop offset="0" stop-color="#63c22f"/><stop offset="1" stop-color="#2c8a1d"/></linearGradient>
+    <radialGradient id="g-flesh" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="575.36">
+      <stop offset="0.12" stop-color="#f0fda0"/><stop offset="0.55" stop-color="#c8f04a"/><stop offset="1" stop-color="#93d82a"/></radialGradient>
+    <filter id="g-sh" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="17.26" stdDeviation="23.01" flood-color="#000" flood-opacity="0.45"/></filter>
+  </defs>
+  <rect x="48" y="48" width="928" height="928" rx="208.8" fill="url(#t-bg)"/>
+  <rect x="48" y="48" width="928" height="928" rx="208.8" fill="url(#t-glow)"/>
+  <rect x="51" y="51" width="922" height="922" rx="205.8" fill="none" stroke="#fff" stroke-opacity="0.08" stroke-width="6"/>
+  <g transform="translate(845.71 512)"><g filter="url(#g-sh)"><g clip-path="url(#g-w)">
+      <rect x="-690.432" y="-690.432" width="1380.864" height="1380.864" fill="url(#g-flesh)"/><circle r="575.36" fill="none" stroke="url(#g-rind)" stroke-width="138.09"/></g></g></g>
+</svg>

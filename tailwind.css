@@ -2,7 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Design system "Xtream Player": tema scuro in stile streaming (rosso e nero), tema OLED in modalità cinema. */
+/* Design system "Lime Player": tema scuro in stile streaming (lime e nero, i colori del logo), tema OLED in modalità cinema.
+   Il rosso resta solo per "in diretta" (--live) e per gli errori (--danger). */
 @layer base {
   @font-face {
     font-family: 'Manrope Variable';
@@ -40,11 +41,12 @@
     --ink: #ffffff;
     --ink-muted: #b3b3b3;
     --ink-subtle: #8c8c8c;
-    --accent: #e50914;
-    --accent-hover: #f6121d;
-    --accent-soft: rgba(229, 9, 20, 0.16);
-    --accent-ink: #ff5a62;
-    --on-accent: #ffffff;
+    --accent: #b6ec3a;
+    --accent-hover: #c8f45e;
+    --accent-soft: rgba(182, 236, 58, 0.14);
+    --accent-ink: #c6f06a;
+    /* il lime è chiaro: testo scuro sopra l'accento */
+    --on-accent: #0d1405;
     --live: #e50914;
     --on-live: #ffffff;
     --danger: #ff6b6b;
@@ -59,8 +61,8 @@
     --track: rgba(255, 255, 255, 0.25);
     --focus-ring: #ffffff;
     --shadow-pop: 0 24px 48px -12px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.04);
-    --shadow-glow: 0 8px 24px -8px rgba(229, 9, 20, 0.55);
-    --shadow-thumb: 0 0 0 4px rgba(229, 9, 20, 0.35);
+    --shadow-glow: 0 8px 24px -10px rgba(182, 236, 58, 0.4);
+    --shadow-thumb: 0 0 0 4px rgba(182, 236, 58, 0.35);
   }
 
   /* tema OLED: nero puro quando la modalità cinema è attiva */
@@ -72,7 +74,7 @@
     --surface-400: #1e1e24;
     --line: #1f1f26;
     --line-strong: #33333d;
-    --accent-soft: rgba(229, 9, 20, 0.18);
+    --accent-soft: rgba(182, 236, 58, 0.16);
     --scrim: rgba(0, 0, 0, 0.75);
     --glass: rgba(10, 10, 12, 0.9);
     --glass-line: rgba(255, 255, 255, 0.1);

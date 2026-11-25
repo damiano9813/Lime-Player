@@ -1,4 +1,4 @@
--- Server di sincronizzazione di Xtream Player (Supabase / PostgreSQL 15+).
+-- Server di sincronizzazione di Lime Player (Supabase / PostgreSQL 15+).
 -- Da eseguire una volta nel progetto Supabase: SQL Editor > New query > incolla > Run.
 --
 -- Il server conserva solo dati cifrati dai dispositivi (AES-GCM, chiave derivata dal codice di

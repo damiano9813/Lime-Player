@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Xtream Player",
+  "productName": "Lime Player",
   "version": "1.3.0",
   "identifier": "com.xtreamplayer.desktop",
   "build": {
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Xtream Player",
+        "title": "Lime Player",
         "width": 1440,
         "height": 900,
         "minWidth": 1100,
@@ -43,10 +43,12 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
+    "publisher": "Lime Player",
     "icon": ["icons/icon.ico"],
     "externalBin": ["binaries/ffmpeg", "binaries/ffprobe"],
     "resources": { "binaries/ffmpeg-LICENSE.txt": "ffmpeg-LICENSE.txt", "binaries/libmpv-2.dll": "libmpv-2.dll" },
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": true,
+    "windows": { "nsis": { "installerHooks": "./windows/hooks.nsh" } }
   },
   "plugins": {
     "updater": {

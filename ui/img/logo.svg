@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="t-bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1a2712"/><stop offset="1" stop-color="#070a06"/></linearGradient>
+    <radialGradient id="t-glow" gradientUnits="userSpaceOnUse" cx="490.47" cy="512" r="511.33">
+      <stop offset="0" stop-color="#b6f03c" stop-opacity="0.26"/><stop offset="1" stop-color="#b6f03c" stop-opacity="0"/></radialGradient>
+    <clipPath id="g-w"><path d="M-60.55 34.96L-432.27 249.57A37.68 37.68 0 0 1 -485.06 233.27A538.24 538.24 0 0 1 -485.06 -233.27A37.68 37.68 0 0 1 -432.27 -249.57L-60.55 -34.96A40.37 40.37 0 0 1 -60.55 34.96Z"/></clipPath>
+    <linearGradient id="g-rind" gradientUnits="userSpaceOnUse" x1="-538.24" y1="-269.12" x2="0" y2="269.12">
+      <stop offset="0" stop-color="#63c22f"/><stop offset="1" stop-color="#2c8a1d"/></linearGradient>
+    <radialGradient id="g-flesh" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="538.24">
+      <stop offset="0.12" stop-color="#f0fda0"/><stop offset="0.55" stop-color="#c8f04a"/><stop offset="1" stop-color="#93d82a"/></radialGradient>
+    <filter id="g-sh" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="16.15" stdDeviation="21.53" flood-color="#000" flood-opacity="0.45"/></filter>
+  </defs>
+  <rect x="48" y="48" width="928" height="928" rx="208.8" fill="url(#t-bg)"/>
+  <rect x="48" y="48" width="928" height="928" rx="208.8" fill="url(#t-glow)"/>
+  <rect x="51" y="51" width="922" height="922" rx="205.8" fill="none" stroke="#fff" stroke-opacity="0.08" stroke-width="6"/>
+  <g transform="translate(824.18 512)"><g filter="url(#g-sh)"><g clip-path="url(#g-w)">
+      <rect x="-645.888" y="-645.888" width="1291.776" height="1291.776" fill="#f2fadf"/><circle r="538.24" fill="none" stroke="url(#g-rind)" stroke-width="91.5"/><g fill="url(#g-flesh)" stroke="url(#g-flesh)" stroke-width="43.06" stroke-linejoin="round"><path d="M-182.08 61.62L-406.69 191.3A449.43 449.43 0 0 1 -436.63 106.5Z"/><path d="M-167.38 0L-446.72 49.26A449.43 449.43 0 0 1 -446.72 -49.26Z"/><path d="M-182.08 -61.62L-436.63 -106.5A449.43 449.43 0 0 1 -406.69 -191.3Z"/></g></g></g></g>
+</svg>
