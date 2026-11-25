@@ -68,7 +68,9 @@ pub async fn mpv_load(
         alang: alang.unwrap_or_default(),
         slang: slang.unwrap_or_default(),
         audio: audio.unwrap_or_else(|| "stereo".into()),
-        volume: volume.filter(|v| v.is_finite()).map(|v| v.clamp(0.0, 100.0)),
+        volume: volume
+            .filter(|v| v.is_finite())
+            .map(|v| v.clamp(0.0, 100.0)),
         mute,
         title: title.unwrap_or_default().replace(['\r', '\n'], " "),
         user_agent: crate::util::USER_AGENT,
@@ -92,7 +94,9 @@ pub async fn mpv_set(app: AppHandle, name: String, value: String) -> Result<(), 
     if !settable(&name) {
         return Err(format!("proprietà non modificabile: {}", name));
     }
-    call::<Value>(&app, "set", SetArgs { name, value }).await.map(|_| ())
+    call::<Value>(&app, "set", SetArgs { name, value })
+        .await
+        .map(|_| ())
 }
 
 #[derive(Serialize)]
@@ -105,9 +109,15 @@ pub async fn mpv_seek(app: AppHandle, secs: f64) -> Result<(), String> {
     if !secs.is_finite() {
         return Err("posizione non valida".into());
     }
-    call::<Value>(&app, "seek", SeekArgs { secs: secs.max(0.0) })
-        .await
-        .map(|_| ())
+    call::<Value>(
+        &app,
+        "seek",
+        SeekArgs {
+            secs: secs.max(0.0),
+        },
+    )
+    .await
+    .map(|_| ())
 }
 
 #[derive(Serialize)]
@@ -136,9 +146,23 @@ pub async fn mpv_set_rect(
     let vw = vw.filter(|v| v.is_finite() && *v > 0.0).unwrap_or(0.0);
     let ok = [x, y, w, h].iter().all(|v| v.is_finite()) && w > 0.0 && h > 0.0 && vw > 0.0;
     let args = if ok {
-        RectArgs { x, y, w, h, vw, visible }
+        RectArgs {
+            x,
+            y,
+            w,
+            h,
+            vw,
+            visible,
+        }
     } else {
-        RectArgs { x: 0.0, y: 0.0, w: 0.0, h: 0.0, vw: 0.0, visible: false }
+        RectArgs {
+            x: 0.0,
+            y: 0.0,
+            w: 0.0,
+            h: 0.0,
+            vw: 0.0,
+            visible: false,
+        }
     };
     call::<Value>(&app, "rect", args).await.map(|_| ())
 }

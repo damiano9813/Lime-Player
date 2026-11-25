@@ -682,7 +682,9 @@ mod tests {
         assert_eq!(list[1].name, "Casa");
         // aggiornamento: nuova password, nome sostituito
         import_with(&path, &vault, c("http://a", "u1", "p9", "Ufficio")).unwrap();
-        let a = account_with(&path, &vault, "http://a", "u1").unwrap().unwrap();
+        let a = account_with(&path, &vault, "http://a", "u1")
+            .unwrap()
+            .unwrap();
         assert_eq!((a.password.as_str(), a.name.as_str()), ("p9", "Ufficio"));
         std::fs::remove_dir_all(&dir).ok();
     }

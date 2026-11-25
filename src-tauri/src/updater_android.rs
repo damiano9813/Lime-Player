@@ -42,7 +42,10 @@ pub fn newer(candidate: &str, current: &str) -> bool {
     };
     let (a, b) = (parts(candidate), parts(current));
     for i in 0..a.len().max(b.len()) {
-        let (x, y) = (a.get(i).copied().unwrap_or(0), b.get(i).copied().unwrap_or(0));
+        let (x, y) = (
+            a.get(i).copied().unwrap_or(0),
+            b.get(i).copied().unwrap_or(0),
+        );
         if x != y {
             return x > y;
         }

@@ -55,9 +55,15 @@ pub async fn open_url(app: AppHandle, url: String) -> Result<(), String> {
     }
     #[cfg(target_os = "android")]
     {
-        crate::native::call::<serde_json::Value>(&app, "openUrl", UrlArgs { url: parsed.as_str() })
-            .await
-            .map(|_| ())
+        crate::native::call::<serde_json::Value>(
+            &app,
+            "openUrl",
+            UrlArgs {
+                url: parsed.as_str(),
+            },
+        )
+        .await
+        .map(|_| ())
     }
     #[cfg(windows)]
     {
@@ -78,7 +84,9 @@ pub async fn open_url(app: AppHandle, url: String) -> Result<(), String> {
 pub async fn show_keyboard(app: AppHandle) -> Result<(), String> {
     #[cfg(target_os = "android")]
     {
-        crate::native::call::<serde_json::Value>(&app, "keyboard", ()).await.map(|_| ())
+        crate::native::call::<serde_json::Value>(&app, "keyboard", ())
+            .await
+            .map(|_| ())
     }
     #[cfg(not(target_os = "android"))]
     {
@@ -115,7 +123,9 @@ pub async fn set_orientation(app: AppHandle, landscape: bool) -> Result<(), Stri
 pub async fn leave_app(app: AppHandle) -> Result<(), String> {
     #[cfg(target_os = "android")]
     {
-        crate::native::call::<serde_json::Value>(&app, "leave", ()).await.map(|_| ())
+        crate::native::call::<serde_json::Value>(&app, "leave", ())
+            .await
+            .map(|_| ())
     }
     #[cfg(not(target_os = "android"))]
     {
